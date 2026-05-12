@@ -1,0 +1,335 @@
+'use client';
+
+import React, { useState, useRef } from 'react';
+import { Languages, Upload, X, Zap, Loader2, Globe, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+type Result = {
+  detectedLanguage: string;
+  confidence: number;
+  ocrText: string;
+  englishTranslation: string;
+  score: number;
+  maxMarks: number;
+  pointsEarned: string[];
+  pointsMissed: string[];
+  feedbackInEnglish: string;
+  feedbackInNativeLanguage: string;
+};
+
+const LANGUAGES = [
+  'Auto-detect', 'English', 'Hindi', 'Telugu', 'Tamil',
+  'Kannada', 'Marathi', 'Bengali', 'Gujarati', 'Malayalam', 'Punjabi',
+];
+
+const LANG_FLAGS: Record<string, string> = {
+  English: '🇬🇧', Hindi: '🇮🇳', Telugu: '🇮🇳', Tamil: '🇮🇳',
+  Kannada: '🇮🇳', Marathi: '🇮🇳', Bengali: '🇮🇳', Gujarati: '🇮🇳',
+  Malayalam: '🇮🇳', Punjabi: '🇮🇳',
+};
+
+export default function MultilingualClient() {
+  const [image, setImage] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [language, setLanguage] = useState('Auto-detect');
+  const [subject, setSubject] = useState('');
+  const [question, setQuestion] = useState('');
+  const [maxMarks, setMaxMarks] = useState('10');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<Result | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [showNative, setShowNative] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) { toast.error('Please upload an image file'); return; }
+    setImage(file);
+    setResult(null);
+    const reader = new FileReader();
+    reader.onload = (e) => setPreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  function removeImage() { setImage(null); setPreview(null); setResult(null); }
+
+  async function analyze() {
+    if (!image) { toast.error('Please upload an answer sheet image'); return; }
+    setLoading(true);
+    setResult(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(image);
+      });
+
+      const langInstruction = language !== 'Auto-detect'
+        ? `The student wrote in ${language}. Evaluate accordingly.`
+        : 'Auto-detect the language from the handwriting/text.';
+
+      const prompt = `You are a multilingual answer sheet evaluator for Indian school exams.
+
+${langInstruction}
+
+Subject: ${subject || 'General'}
+Question to evaluate against: ${question || 'General answer quality evaluation'}
+Maximum Marks: ${maxMarks}
+
+Tasks:
+1. Detect the language this answer is written in
+2. Extract and transcribe the written text (OCR)
+3. Evaluate the answer quality against the question
+4. Provide feedback in both English and the student's language
+
+Return ONLY valid JSON (no markdown fences):
+{
+  "detectedLanguage": "Language name (e.g. Hindi, Telugu, English)",
+  "confidence": <0-100, detection confidence>,
+  "ocrText": "The full transcribed text as written by the student",
+  "englishTranslation": "Complete English translation of the answer",
+  "score": <number 0 to ${maxMarks}>,
+  "maxMarks": ${maxMarks},
+  "pointsEarned": ["Specific point that earned marks 1", "Point 2"],
+  "pointsMissed": ["Missing concept 1", "Missing concept 2"],
+  "feedbackInEnglish": "Detailed feedback paragraph in English",
+  "feedbackInNativeLanguage": "Same feedback translated to the student's language (if not English)"
+}`;
+
+      const res = await fetch('/api/ai/gemini-vision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mimeType: image.type, base64Data: base64, prompt }),
+      });
+
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed'); }
+
+      const data = await res.json();
+      let text = (data.text || '').replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+
+      let parsed: Result;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error('Could not parse AI response. Please try again.');
+      }
+
+      setResult(parsed);
+    } catch (err: any) {
+      toast.error(err.message || 'Analysis failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const scorePercent = result ? Math.round((result.score / result.maxMarks) * 100) : 0;
+  const scoreColor = scorePercent >= 75 ? 'text-positive' : scorePercent >= 50 ? 'text-warning' : 'text-negative';
+
+  return (
+    <div className="animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-6">
+        <Languages size={22} className="text-primary" />
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Multilingual Engine</h1>
+          <p className="text-sm text-muted-foreground">Evaluate answer sheets written in any Indian language</p>
+        </div>
+      </div>
+
+      {/* Feature info cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {[
+          { icon: Globe, title: 'Auto Language Detection', desc: 'Detects 10+ Indian languages from handwriting', color: 'text-primary', bg: 'bg-primary/10' },
+          { icon: FileText, title: 'Native Evaluation', desc: 'Scores answers in the student\'s own language', color: 'text-positive', bg: 'bg-positive/10' },
+          { icon: Languages, title: 'Bilingual Feedback', desc: 'Feedback in English + student\'s language', color: 'text-warning', bg: 'bg-warning/10' },
+        ].map(({ icon: Icon, title, desc, color, bg }) => (
+          <div key={title} className="bg-card border border-border rounded-2xl p-4 shadow-card flex items-start gap-3">
+            <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center shrink-0`}>
+              <Icon size={18} className={color} />
+            </div>
+            <div>
+              <p className="text-sm font-700 text-foreground">{title}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Left: Upload + Config */}
+        <div className="space-y-4">
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
+            <h3 className="font-bold text-foreground mb-4">Upload Answer Sheet</h3>
+            {!preview ? (
+              <div
+                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${dragging ? 'border-primary bg-secondary/40' : 'border-border hover:border-primary/50 hover:bg-muted/40'}`}
+                onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+              >
+                <Upload size={32} className="text-muted-foreground/50 mx-auto mb-3" />
+                <p className="text-sm font-500 text-foreground mb-1">Drop answer sheet here or click to upload</p>
+                <p className="text-xs text-muted-foreground">JPG, PNG supported</p>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+              </div>
+            ) : (
+              <div className="relative rounded-xl overflow-hidden border border-border">
+                <img src={preview} alt="Answer sheet" className="w-full max-h-64 object-contain bg-muted/20" />
+                <button onClick={removeImage} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center shadow hover:bg-negative-bg transition-colors">
+                  <X size={14} className="text-negative" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-card space-y-4">
+            <h3 className="font-bold text-foreground">Configuration</h3>
+            <div>
+              <label className="block text-xs font-600 text-muted-foreground mb-1">Language Override</label>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="input-field text-sm py-2">
+                {LANGUAGES.map((l) => <option key={l}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-600 text-muted-foreground mb-1">Subject</label>
+              <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Hindi Literature" className="input-field text-sm py-2" />
+            </div>
+            <div>
+              <label className="block text-xs font-600 text-muted-foreground mb-1">Question (optional)</label>
+              <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Enter the question for better evaluation..." rows={2} className="input-field text-sm resize-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-600 text-muted-foreground mb-1">Max Marks</label>
+              <input type="number" min={1} max={50} value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} className="input-field text-sm py-2" />
+            </div>
+            <button
+              onClick={analyze}
+              disabled={loading || !image}
+              className="btn-primary w-full py-3 rounded-xl text-sm font-600 flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+              {loading ? 'Detecting & Evaluating…' : 'Detect Language & Evaluate'}
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Results */}
+        <div>
+          {!result && !loading && (
+            <div className="bg-card border border-border rounded-2xl p-10 shadow-card flex flex-col items-center justify-center text-center min-h-[400px]">
+              <div className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center mb-4">
+                <Languages size={28} className="text-primary" />
+              </div>
+              <h3 className="text-base font-bold text-foreground mb-2">Upload to begin</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Upload any answer sheet — written in Hindi, Telugu, Tamil, or any Indian language — and let AI evaluate it.
+              </p>
+            </div>
+          )}
+
+          {loading && (
+            <div className="bg-card border border-border rounded-2xl p-10 shadow-card flex flex-col items-center justify-center min-h-[400px]">
+              <Loader2 size={32} className="animate-spin text-primary mb-4" />
+              <p className="text-sm font-500 text-foreground mb-1">Detecting language & evaluating…</p>
+              <p className="text-xs text-muted-foreground">OCR + translation + evaluation in progress</p>
+            </div>
+          )}
+
+          {result && (
+            <div className="space-y-4 animate-slide-up">
+              {/* Language + Score */}
+              <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{LANG_FLAGS[result.detectedLanguage] || '🌐'}</span>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Detected Language</p>
+                      <p className="font-bold text-foreground">{result.detectedLanguage}</p>
+                    </div>
+                  </div>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-secondary text-primary font-600">
+                    {result.confidence}% confidence
+                  </span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <span className={`text-4xl font-bold font-tabular ${scoreColor}`}>{result.score}</span>
+                  <span className="text-xl text-muted-foreground mb-0.5">/ {result.maxMarks}</span>
+                  <span className={`text-base font-600 mb-0.5 ${scoreColor}`}>({scorePercent}%)</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+                  <div className="h-1.5 rounded-full" style={{ width: `${scorePercent}%`, backgroundColor: scorePercent >= 75 ? 'var(--positive)' : scorePercent >= 50 ? 'var(--warning)' : 'var(--negative)' }} />
+                </div>
+              </div>
+
+              {/* OCR Text */}
+              <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-foreground">Extracted Text (OCR)</h3>
+                  <button onClick={() => setShowNative(!showNative)} className="text-xs font-600 text-primary hover:bg-secondary px-2 py-1 rounded-lg transition-colors">
+                    {showNative ? 'Show English' : 'Show Native'}
+                  </button>
+                </div>
+                <div className="bg-muted/40 rounded-xl p-3 text-sm text-foreground whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto scrollbar-thin">
+                  {showNative ? result.ocrText : result.englishTranslation}
+                </div>
+              </div>
+
+              {/* Points earned/missed */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {result.pointsEarned?.length > 0 && (
+                  <div className="bg-card border border-border rounded-2xl p-4 shadow-card">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <CheckCircle2 size={14} className="text-positive" />
+                      <span className="text-xs font-700 text-positive">Points Earned</span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {result.pointsEarned.map((pt, i) => (
+                        <li key={i} className="text-xs text-foreground flex items-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-positive mt-1 shrink-0" />
+                          {pt}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {result.pointsMissed?.length > 0 && (
+                  <div className="bg-card border border-border rounded-2xl p-4 shadow-card">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <AlertCircle size={14} className="text-negative" />
+                      <span className="text-xs font-700 text-negative">Points Missed</span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {result.pointsMissed.map((pt, i) => (
+                        <li key={i} className="text-xs text-foreground flex items-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-negative mt-1 shrink-0" />
+                          {pt}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Feedback */}
+              <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
+                <h3 className="font-bold text-foreground mb-2">Feedback</h3>
+                <p className="text-sm text-foreground leading-relaxed mb-3">{result.feedbackInEnglish}</p>
+                {result.feedbackInNativeLanguage && result.feedbackInNativeLanguage !== result.feedbackInEnglish && (
+                  <div className="border-t border-border pt-3">
+                    <p className="text-xs font-600 text-muted-foreground mb-1">{result.detectedLanguage} feedback:</p>
+                    <p className="text-sm text-foreground leading-relaxed">{result.feedbackInNativeLanguage}</p>
+                  </div>
+                )}
+              </div>
+
+              <button onClick={() => setResult(null)} className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600">
+                Evaluate Another Sheet
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

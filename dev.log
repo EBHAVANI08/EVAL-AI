@@ -1,0 +1,524 @@
+
+> aiexaminerpro@0.1.0 dev
+> next dev -p 4028
+
+   ▲ Next.js 15.1.11
+   - Local:        http://localhost:4028
+   - Network:      http://192.168.17.198:4028
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 4.2s
+ ○ Compiling /students ...
+ ✓ Compiled /students in 13.3s (2033 modules)
+ GET /students 200 in 14262ms
+ ○ Compiling / ...
+ ✓ Compiled / in 2.2s (2055 modules)
+ GET / 200 in 2793ms
+ GET /students 200 in 116ms
+ ○ Compiling /analytics ...
+ ✓ Compiled /analytics in 4.3s (3111 modules)
+ GET /analytics 200 in 5132ms
+ ○ Compiling /answer-generator ...
+ ✓ Compiled /answer-generator in 5.1s (3125 modules)
+ GET /answer-generator 200 in 5407ms
+ ○ Compiling /diagram-analyzer ...
+ ✓ Compiled /diagram-analyzer in 1579ms (3139 modules)
+ GET /diagram-analyzer 200 in 1786ms
+ ○ Compiling /multilingual-engine ...
+ ✓ Compiled /multilingual-engine in 1195ms (3153 modules)
+ GET /multilingual-engine 200 in 1542ms
+ ○ Compiling /question-papers ...
+ ✓ Compiled /question-papers in 1707ms (3167 modules)
+ GET /question-papers 200 in 2042ms
+ ○ Compiling /settings ...
+ ✓ Compiled /settings in 1511ms (3185 modules)
+ GET /settings 200 in 1775ms
+ ○ Compiling /question-paper-analyzer ...
+ ✓ Compiled /students in 19.9s (2664 modules)
+ GET /question-paper-analyzer 200 in 22123ms
+ GET /answer-generator 200 in 20836ms
+ GET /diagram-analyzer 200 in 18120ms
+ GET /students 200 in 15997ms
+ GET /multilingual-engine 200 in 17549ms
+ GET /question-paper-analyzer 200 in 14448ms
+ GET /question-paper-analyzer 200 in 416ms
+ ○ Compiling /answer-sheet-evaluator ...
+ ✓ Compiled /diagram-analyzer in 13.8s (3227 modules)
+ GET /question-paper-analyzer 200 in 12767ms
+ GET /answer-generator 200 in 11121ms
+ GET /diagram-analyzer 200 in 9345ms
+ GET /answer-sheet-evaluator 200 in 14945ms
+ GET /diagram-analyzer 200 in 277ms
+ GET /answer-generator 200 in 289ms
+ GET /diagram-analyzer 200 in 155ms
+ GET /diagram-analyzer 200 in 68ms
+ GET /diagram-analyzer 200 in 83ms
+ ○ Compiling /api/ai/gemini-vision ...
+ ✓ Compiled /api/ai/gemini-vision in 10.6s (2685 modules)
+ GET /diagram-analyzer 200 in 871ms
+ POST /api/ai/gemini-vision 200 in 33378ms
+ ○ Compiling /multilingual-engine ...
+ ✓ Compiled /answer-generator in 4.5s (1074 modules)
+ ✓ Compiled (1083 modules)
+ GET /answer-generator 200 in 6021ms
+ GET /multilingual-engine 200 in 8104ms
+ GET /answer-generator 200 in 131ms
+ GET /multilingual-engine 200 in 156ms
+ GET /answer-generator 200 in 176ms
+ GET /multilingual-engine 200 in 175ms
+ GET /answer-generator 200 in 178ms
+ GET /multilingual-engine 200 in 167ms
+ GET /multilingual-engine 200 in 116ms
+ GET /multilingual-engine 200 in 65ms
+ GET /diagram-analyzer 200 in 78ms
+ GET /answer-generator 200 in 81ms
+ GET /question-paper-analyzer 200 in 94ms
+ ○ Compiling /answer-sheet-evaluator ...
+ ✓ Compiled /answer-sheet-evaluator in 2.2s (1616 modules)
+ GET /answer-sheet-evaluator 200 in 3001ms
+ GET /answer-sheet-evaluator 200 in 115ms
+ GET /answer-sheet-evaluator 200 in 122ms
+ GET /answer-sheet-evaluator 200 in 126ms
+ GET /answer-sheet-evaluator 200 in 118ms
+ GET /answer-sheet-evaluator 200 in 94ms
+ ○ Compiling /students ...
+ ✓ Compiled /question-papers in 6.4s (1626 modules)
+ ✓ Compiled (1634 modules)
+ GET /question-papers 200 in 9114ms
+ GET /students 200 in 11794ms
+ GET /question-papers 200 in 263ms
+ GET /students 200 in 296ms
+ GET /question-papers 200 in 227ms
+ GET /question-papers 200 in 133ms
+ ○ Compiling /api/question-papers ...
+ ✓ Compiled /api/question-papers in 5.3s (3259 modules)
+ ○ Compiling /analytics ...
+ ✓ Compiled /analytics in 3.9s (1673 modules)
+ GET /analytics 200 in 6479ms
+ GET /analytics 200 in 102ms
+ ○ Compiling /api/analytics ...
+ ✓ Compiled /api/analytics in 5.6s (3281 modules)
+GET /api/question-papers error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+GET /api/question-papers error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+GET /api/analytics error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/question-papers? 500 in 37782ms
+ GET /api/question-papers? 500 in 17094ms
+ GET /api/analytics 500 in 10917ms
+GET /api/analytics error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/analytics 500 in 55ms
+ GET /question-papers 200 in 236ms
+GET /api/question-papers error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/question-papers? 500 in 152ms
+GET /api/question-papers error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/question-papers? 500 in 113ms
+ GET /students 200 in 80ms
+ ○ Compiling /api/students ...
+ ✓ Compiled /api/students in 6.3s (3263 modules)
+GET /api/students error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/students? 500 in 6619ms
+GET /api/students error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/students? 500 in 80ms
+ ○ Compiling /teacher-dashboard ...
+ ✓ Compiled /teacher-dashboard in 16.4s (3271 modules)
+ GET /teacher-dashboard 200 in 17061ms
+ ○ Compiling /api/evaluations ...
+ ✓ Compiled /api/evaluations in 5.9s (3304 modules)
+GET /api/evaluations error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/evaluations?limit=50 500 in 6311ms
+GET /api/evaluations error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/evaluations?limit=50 500 in 124ms
+ GET /teacher-dashboard 200 in 716ms
+ GET /answer-sheet-evaluator 200 in 265ms
+ ○ Compiling /question-paper-analyzer ...
+ ✓ Compiled /question-paper-analyzer in 4.6s (1656 modules)
+ GET /question-paper-analyzer 200 in 6608ms
+ ○ Compiling /api/ai/gemini-upload ...
+ ✓ Compiled /api/ai/gemini-upload in 10.6s (3305 modules)
+ GET /question-paper-analyzer 200 in 806ms
+ POST /api/ai/gemini-upload 200 in 14737ms
+ ○ Compiling /api/ai/gemini-vision ...
+ ✓ Compiled /api/ai/gemini-vision in 2.1s (1675 modules)
+ POST /api/ai/gemini-vision 200 in 27442ms
+ GET /answer-sheet-evaluator 200 in 372ms
+ POST /api/ai/gemini-upload 200 in 4272ms
+Gemini returned 503 — retrying in 2000ms (attempt 1/3)
+Gemini returned 503 — retrying in 4000ms (attempt 2/3)
+Gemini returned 503 — retrying in 8000ms (attempt 3/3)
+ POST /api/ai/gemini-vision 502 in 108603ms
+ POST /api/ai/gemini-upload 200 in 3629ms
+Gemini returned 503 — retrying in 2000ms (attempt 1/3)
+Gemini returned 503 — retrying in 4000ms (attempt 2/3)
+Gemini returned 503 — retrying in 8000ms (attempt 3/3)
+ POST /api/ai/gemini-vision 200 in 251386ms
+ ○ Compiling /api/evaluations ...
+ ✓ Compiled /api/evaluations in 1176ms (1667 modules)
+POST /api/evaluations error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ POST /api/evaluations 500 in 1366ms
+ GET /question-paper-analyzer 200 in 585ms
+ ○ Compiling /answer-generator ...
+ ✓ Compiled /answer-generator in 4.9s (1657 modules)
+ GET /answer-generator 200 in 5271ms
+ GET /answer-sheet-evaluator 200 in 1169ms
+ ○ Compiling /diagram-analyzer ...
+ ✓ Compiled /diagram-analyzer in 6.4s (1646 modules)
+ GET /diagram-analyzer 200 in 6841ms
+ GET /students 200 in 70ms
+ ○ Compiling /api/students ...
+ ✓ Compiled /api/students in 912ms (1665 modules)
+GET /api/students error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/students? 500 in 1388ms
+GET /api/students error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/students? 500 in 37ms
+ ○ Compiling /question-papers ...
+ ✓ Compiled /question-papers in 4.4s (1673 modules)
+ GET /question-papers 200 in 4790ms
+ ○ Compiling /api/question-papers ...
+ ✓ Compiled /api/question-papers in 1059ms (1675 modules)
+GET /api/question-papers error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/question-papers? 500 in 1357ms
+GET /api/question-papers error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/question-papers? 500 in 31ms
+ GET /answer-sheet-evaluator 200 in 140ms
+ GET /question-paper-analyzer 200 in 130ms
+ GET /teacher-dashboard 200 in 77ms
+ ○ Compiling /api/evaluations ...
+ ✓ Compiled /api/evaluations in 1749ms (1677 modules)
+GET /api/evaluations error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/evaluations?limit=50 500 in 1896ms
+GET /api/evaluations error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ GET /api/evaluations?limit=50 500 in 42ms
+ GET /answer-sheet-evaluator 200 in 238ms
+ GET /question-paper-analyzer 200 in 760ms
+ ○ Compiling /api/ai/gemini-upload ...
+ ✓ Compiled /api/ai/gemini-upload in 1524ms (1679 modules)
+ POST /api/ai/gemini-upload 200 in 4851ms
+ ○ Compiling /api/ai/gemini-vision ...
+ ✓ Compiled /api/ai/gemini-vision in 827ms (1681 modules)
+ POST /api/ai/gemini-vision 200 in 66812ms
+ GET /answer-sheet-evaluator 200 in 90ms
+ POST /api/ai/gemini-upload 200 in 6898ms
+ ○ Compiling /multilingual-engine ...
+ ✓ Compiled /multilingual-engine in 9.9s (1666 modules)
+ GET /multilingual-engine 200 in 11292ms
+ GET /answer-sheet-evaluator 200 in 8354ms
+ POST /api/ai/gemini-vision 200 in 277091ms
+ ○ Compiling /api/evaluations ...
+ ✓ Compiled /api/evaluations in 799ms (1658 modules)
+POST /api/evaluations error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ POST /api/evaluations 500 in 893ms
+ ✓ Compiled in 2.6s (3271 modules)
+ GET /answer-sheet-evaluator 200 in 249ms
+ ○ Compiling /api/ai/gemini-upload ...
+ ✓ Compiled /api/ai/gemini-upload in 1892ms (1656 modules)
+ POST /api/ai/gemini-upload 200 in 6333ms
+ ✓ Compiled /api/ai/gemini-vision in 491ms (1658 modules)
+ POST /api/ai/gemini-vision 200 in 182794ms
+ ○ Compiling /api/evaluations ...
+ ✓ Compiled /api/evaluations in 2s (1658 modules)
+POST /api/evaluations error: [MongoServerSelectionError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+] {
+  errorLabelSet: Set(0) {},
+  reason: [TopologyDescription],
+  code: undefined,
+  [cause]: [MongoNetworkError: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+  ] {
+    errorLabelSet: Set(3) { 'SystemOverloadedError', 'RetryableError', 'ResetPool' },
+    beforeHandshake: false,
+    [cause]: [Error: 34690000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\ws\deps\openssl\openssl\ssl\record\rec_layer_s3.c:1605:SSL alert number 80
+    ] {
+      library: 'SSL routines',
+      reason: 'tlsv1 alert internal error',
+      code: 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR'
+    }
+  }
+}
+ POST /api/evaluations 500 in 2182ms

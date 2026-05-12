@@ -1,0 +1,272 @@
+'use client';
+
+import React, { useState } from 'react';
+import { Download, CheckCircle2, Save, AlertTriangle, FileText, BarChart2 } from 'lucide-react';
+import { toast } from 'sonner';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import type { QuestionEvaluation, StudentInfo } from './EvaluatorWorkspace';
+import dynamic from 'next/dynamic';
+
+const SubjectBreakdownChart = dynamic(
+  () => import('./SubjectBreakdownChart'),
+  { ssr: false, loading: () => <div className="skeleton-pulse h-[140px] rounded-xl" /> }
+);
+
+interface ScoreSummaryPanelProps {
+  questions: QuestionEvaluation[];
+  paperTotalMarks?: number;
+  evalId: string | null;
+  studentInfo: StudentInfo;
+}
+
+export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, studentInfo }: ScoreSummaryPanelProps) {
+  const [isSaving, setIsSaving] = useState(false);
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false);
+
+  const totalMax = questions.reduce((a, q) => a + q.maxMarks, 0);
+  const displayMax = paperTotalMarks ?? totalMax;
+  const totalObtained = questions.reduce((a, q) => {
+    const score = q.teacherScore !== null ? q.teacherScore : q.aiScore;
+    return a + score;
+  }, 0);
+  const percentage = displayMax > 0 ? Math.round((totalObtained / displayMax) * 100) : 0;
+  const overrideCount = questions.filter((q) => q.teacherScore !== null).length;
+  const flaggedCount = questions.filter((q) => q.status === 'flagged').length;
+  const reviewedCount = questions.filter((q) => q.teacherScore !== null || q.status === 'reviewed').length;
+  const avgConfidence = Math.round(questions.reduce((a, q) => a + q.aiConfidence, 0) / questions.length);
+
+  const gradeLabel = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : percentage >= 40 ? 'D' : 'F';
+  const gradeColor = percentage >= 70 ? 'text-positive' : percentage >= 50 ? 'text-warning' : 'text-negative';
+
+  const sectionBreakdown = Array.from(new Set(questions.map((q) => q.section))).map((sec) => {
+    const secQs = questions.filter((q) => q.section === sec);
+    const secMax = secQs.reduce((a, q) => a + q.maxMarks, 0);
+    const secObtained = secQs.reduce((a, q) => {
+      const score = q.teacherScore !== null ? q.teacherScore : q.aiScore;
+      return a + score;
+    }, 0);
+    return { section: sec, obtained: secObtained, max: secMax, pct: Math.round((secObtained / secMax) * 100) };
+  });
+
+  const handleSaveDraft = async () => {
+    if (!evalId) {
+      toast.error('No evaluation ID — please wait for auto-save to complete first.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/evaluations/${evalId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions, studentInfo }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Save failed' }));
+        throw new Error(err.error);
+      }
+      toast.success('Draft saved — teacher scores and comments preserved');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save draft');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleFinalize = async () => {
+    setShowFinalizeModal(false);
+    if (!evalId) {
+      toast.error('No evaluation ID — cannot finalize.');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/evaluations/${evalId}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questions }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Finalize failed' }));
+        throw new Error(err.error);
+      }
+      toast.success('Evaluation finalized! Scores are now locked in the database.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to finalize evaluation');
+    }
+  };
+
+  const handleExport = () => {
+    // Build a simple CSV export of the evaluation
+    const rows = [
+      ['Q No', 'Section', 'Question', 'OCR Text', 'AI Score', 'Teacher Score', 'Max Marks', 'AI Confidence', 'Status', 'Comment'],
+      ...questions.map((q) => [
+        q.qNo,
+        q.section,
+        `"${q.questionText.replace(/"/g, '""')}"`,
+        `"${q.ocrText.replace(/"/g, '""')}"`,
+        q.aiScore,
+        q.teacherScore ?? '',
+        q.maxMarks,
+        q.aiConfidence,
+        q.status,
+        `"${q.comment.replace(/"/g, '""')}"`,
+      ]),
+    ];
+    const csv = rows.map((r) => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `evaluation_${studentInfo.name || 'student'}_${studentInfo.rollNo || 'unknown'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('CSV report downloaded');
+  };
+
+  return (
+    <>
+      <aside className="w-64 xl:w-72 shrink-0 border-l border-border bg-card overflow-y-auto scrollbar-thin">
+        {/* Score hero */}
+        <div className="p-5 border-b border-border">
+          <p className="metric-label mb-3">Running Score</p>
+          <div className="flex items-end gap-3 mb-3">
+            <span className="metric-hero text-foreground font-tabular">{totalObtained}</span>
+            <span className="text-lg text-muted-foreground font-500 mb-1">/ {displayMax}</span>
+            <span className={`text-2xl font-bold mb-0.5 ${gradeColor}`}>{gradeLabel}</span>
+          </div>
+          <div className="w-full h-3 bg-muted rounded-full overflow-hidden mb-2">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${percentage >= 70 ? 'bg-positive' : percentage >= 50 ? 'bg-warning' : 'bg-negative'}`}
+              style={{ width: `${Math.min(percentage, 100)}%` }}
+            />
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-muted-foreground">{percentage}% scored</span>
+            <span className="text-xs text-muted-foreground">{displayMax - totalObtained} marks dropped</span>
+          </div>
+          {evalId && (
+            <p className="text-xs text-positive mt-2 flex items-center gap-1">
+              <CheckCircle2 size={10} /> Saved to database
+            </p>
+          )}
+        </div>
+
+        {/* Quick stats */}
+        <div className="p-4 border-b border-border grid grid-cols-2 gap-3">
+          {[
+            { label: 'Reviewed', value: `${reviewedCount}/${questions.length}`, color: 'text-positive' },
+            { label: 'Overridden', value: overrideCount, color: overrideCount > 0 ? 'text-primary' : 'text-muted-foreground' },
+            { label: 'Flagged', value: flaggedCount, color: flaggedCount > 0 ? 'text-warning' : 'text-muted-foreground' },
+            { label: 'Avg Confidence', value: `${avgConfidence}%`, color: avgConfidence >= 85 ? 'text-positive' : avgConfidence >= 70 ? 'text-warning' : 'text-negative' },
+          ].map((stat) => (
+            <div key={`stat-${stat.label}`} className="bg-muted/50 rounded-xl p-3 text-center">
+              <p className={`text-base font-700 font-tabular ${stat.color}`}>{stat.value}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Section breakdown */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-2 mb-3">
+            <BarChart2 size={14} className="text-muted-foreground" />
+            <p className="text-xs font-700 text-muted-foreground uppercase tracking-wider">Section Breakdown</p>
+          </div>
+          <div className="space-y-3">
+            {sectionBreakdown.map((sec) => (
+              <div key={`sec-breakdown-${sec.section}`}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-600 text-foreground">Section {sec.section}</span>
+                  <span className="text-xs font-700 text-foreground font-tabular">{sec.obtained}/{sec.max}</span>
+                </div>
+                <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${sec.pct >= 70 ? 'bg-positive' : sec.pct >= 50 ? 'bg-warning' : 'bg-negative'}`}
+                    style={{ width: `${sec.pct}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 text-right">{sec.pct}%</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Confidence chart */}
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center gap-2 mb-3">
+            <FileText size={14} className="text-muted-foreground" />
+            <p className="text-xs font-700 text-muted-foreground uppercase tracking-wider">AI Confidence by Q</p>
+          </div>
+          <SubjectBreakdownChart questions={questions} />
+        </div>
+
+        {/* Flags / warnings */}
+        {flaggedCount > 0 && (
+          <div className="mx-4 mb-4 bg-warning-bg border border-warning/30 rounded-xl p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={14} className="text-warning mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-700 leading-relaxed">
+                <span className="font-700">{flaggedCount} questions need review</span> before finalizing. Low confidence or diagram detected.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="p-4 space-y-2">
+          <button
+            onClick={handleSaveDraft}
+            disabled={isSaving || !evalId}
+            className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600 flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {isSaving ? (
+              <>
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={14} />
+                Save Draft
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleExport}
+            className="w-full py-2.5 rounded-xl text-sm font-600 flex items-center justify-center gap-2 border border-border hover:bg-muted transition-colors text-foreground"
+          >
+            <Download size={14} />
+            Export CSV Report
+          </button>
+
+          <button
+            onClick={() => setShowFinalizeModal(true)}
+            disabled={!evalId}
+            className="btn-primary w-full py-2.5 rounded-xl text-sm font-600 flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            <CheckCircle2 size={14} />
+            Finalize Evaluation
+          </button>
+
+          <p className="text-xs text-muted-foreground text-center pt-1">
+            Finalizing locks all scores and saves the final report.
+          </p>
+        </div>
+      </aside>
+
+      <ConfirmModal
+        isOpen={showFinalizeModal}
+        title="Finalize this evaluation?"
+        description={`This will lock all scores (${totalObtained}/${displayMax} marks) and generate the final report. ${flaggedCount > 0 ? `Warning: ${flaggedCount} questions are still flagged for review.` : 'All questions have been reviewed.'} This action cannot be undone.`}
+        confirmLabel="Yes, Finalize"
+        cancelLabel="Continue Reviewing"
+        variant="primary"
+        onConfirm={handleFinalize}
+        onCancel={() => setShowFinalizeModal(false)}
+      />
+    </>
+  );
+}
