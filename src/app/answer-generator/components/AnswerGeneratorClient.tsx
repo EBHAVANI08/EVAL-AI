@@ -1,8 +1,63 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Lightbulb, Sparkles, Copy, CheckCircle2, Loader2, BookOpen, Clock, Target, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lightbulb, Sparkles, Copy, CheckCircle2, Loader2, BookOpen, Clock, Target, ChevronRight, History, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// Simple markdown renderer — handles ##, **, *, numbered lists, line breaks
+function renderMarkdown(text: string) {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let key = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // ASCII diagram block — render as monospace pre
+    if (line.match(/^[\s\|+\-=>v<\[\]\/\\]+$/) && line.trim().length > 3) {
+      // Collect consecutive diagram lines
+      let block = line;
+      while (i + 1 < lines.length && lines[i + 1].match(/^[\s\|+\-=>v<\[\]\/\\A-Za-z0-9_()\[\]{}.,:;!?@#$%^&*]+$/)) {
+        i++;
+        block += '\n' + lines[i];
+      }
+      elements.push(
+        <pre key={key++} className="bg-slate-900 text-green-400 rounded-xl p-4 text-xs overflow-x-auto font-mono leading-relaxed my-3 border border-slate-700">
+          {block}
+        </pre>
+      );
+      continue;
+    }
+
+    if (!line.trim()) { elements.push(<div key={key++} className="h-2" />); continue; }
+
+    // H1 ##
+    if (line.startsWith('### ')) {
+      elements.push(<h3 key={key++} className="text-sm font-bold text-foreground mt-4 mb-1">{line.slice(4)}</h3>);
+    } else if (line.startsWith('## ')) {
+      elements.push(<h2 key={key++} className="text-base font-bold text-foreground mt-4 mb-1 border-b border-border pb-1">{line.slice(3)}</h2>);
+    } else if (line.startsWith('# ')) {
+      elements.push(<h1 key={key++} className="text-lg font-bold text-foreground mt-4 mb-2">{line.slice(2)}</h1>);
+    } else {
+      // Inline bold/italic
+      const parts = line.replace(/\*\*(.+?)\*\*/g, '|||BOLD|||$1|||/BOLD|||').split('|||');
+      const inline = parts.map((p, pi) => {
+        if (p.startsWith('BOLD|||')) return <strong key={pi} className="font-bold">{p.slice(7)}</strong>;
+        if (p === '/BOLD|||') return null;
+        return p;
+      });
+      // Numbered list
+      if (/^\d+\.\s/.test(line)) {
+        elements.push(<div key={key++} className="flex gap-2 text-sm text-foreground my-0.5"><span className="text-primary font-bold shrink-0">{line.match(/^\d+/)![0]}.</span><span>{inline}</span></div>);
+      } else if (line.startsWith('- ') || line.startsWith('• ')) {
+        elements.push(<div key={key++} className="flex gap-2 text-sm text-foreground my-0.5"><span className="text-primary shrink-0 mt-1">•</span><span>{inline}</span></div>);
+      } else {
+        elements.push(<p key={key++} className="text-sm text-foreground my-0.5 leading-relaxed">{inline}</p>);
+      }
+    }
+  }
+  return elements;
+}
 
 type Result = {
   modelAnswer: string;
@@ -10,6 +65,19 @@ type Result = {
   markingScheme: { point: string; marks: number }[];
   tips: string;
   estimatedTime: string;
+};
+
+type HistoryItem = {
+  id: string;
+  question: string;
+  subject: string;
+  cls: string;
+  marks: string;
+  board: string;
+  language: string;
+  style: string;
+  result: Result;
+  createdAt: string;
 };
 
 const EXAMPLES = [
@@ -41,6 +109,18 @@ export default function AnswerGeneratorClient() {
   const [result, setResult] = useState<Result | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/generated-answers?limit=10')
+      .then((r) => r.json())
+      .then((data) => setHistory(data.answers || []))
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false));
+  }, []);
+
   async function generate() {
     if (!question.trim()) { toast.error('Please enter a question'); return; }
     setLoading(true);
@@ -53,7 +133,35 @@ export default function AnswerGeneratorClient() {
       });
       if (res.status === 429) { toast.error('Rate limit reached. Please wait 30-60 seconds and try again.'); return; }
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
-      setResult(await res.json());
+      const data = await res.json();
+      setResult(data);
+
+      // Auto-save to MongoDB
+      try {
+        const saveRes = await fetch('/api/generated-answers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, subject, cls, marks, board, language, style, result: data }),
+        });
+        if (saveRes.ok) {
+          const saved = await saveRes.json();
+          const newItem: HistoryItem = {
+            id: saved.id,
+            question,
+            subject,
+            cls,
+            marks,
+            board,
+            language,
+            style,
+            result: data,
+            createdAt: new Date().toISOString(),
+          };
+          setHistory((prev) => [newItem, ...prev.slice(0, 9)]);
+        }
+      } catch {
+        // save failed silently
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to generate answer');
     } finally {
@@ -69,16 +177,65 @@ export default function AnswerGeneratorClient() {
     toast.success('Copied to clipboard');
   }
 
+  function loadFromHistory(item: HistoryItem) {
+    setQuestion(item.question);
+    setSubject(item.subject);
+    setCls(item.cls);
+    setMarks(item.marks);
+    setBoard(item.board);
+    setLanguage(item.language);
+    setStyle(item.style);
+    setResult(item.result);
+    setHistoryOpen(false);
+    toast.success('Loaded from history');
+  }
+
   return (
     <div className="animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-6">
-        <Lightbulb size={22} className="text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Answer Generator</h1>
-          <p className="text-sm text-muted-foreground">Generate CBSE-style model answers with AI in seconds</p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2">
+          <Lightbulb size={22} className="text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Answer Generator</h1>
+            <p className="text-sm text-muted-foreground">Generate CBSE-style model answers with AI in seconds</p>
+          </div>
         </div>
+        {history.length > 0 && (
+          <button
+            onClick={() => setHistoryOpen(!historyOpen)}
+            className="flex items-center gap-2 text-sm font-600 text-primary hover:bg-secondary px-3 py-2 rounded-xl transition-colors border border-border"
+          >
+            <History size={15} />
+            History ({history.length})
+            {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
       </div>
+
+      {/* History panel */}
+      {historyOpen && history.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-card mb-6 animate-slide-up">
+          <h3 className="font-bold text-foreground mb-3 text-sm">Previously Generated Answers</h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-thin">
+            {history.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => loadFromHistory(item)}
+                className="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl border border-border hover:bg-secondary/60 transition-colors gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-600 text-foreground truncate">{item.question}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.subject || 'General'} · Class {item.cls} · {item.board} · {new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+                <span className="text-xs font-600 text-muted-foreground shrink-0">{item.marks}M</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         {/* Left: Input */}
@@ -182,6 +339,11 @@ export default function AnswerGeneratorClient() {
               <p className="text-sm text-muted-foreground max-w-xs">
                 Enter a question on the left and click Generate to get a full model answer with marking scheme.
               </p>
+              {!loadingHistory && history.length > 0 && (
+                <p className="text-xs text-primary mt-3 font-600">
+                  {history.length} previously generated {history.length === 1 ? 'answer' : 'answers'} — click History above to view
+                </p>
+              )}
             </div>
           )}
 
@@ -208,16 +370,19 @@ export default function AnswerGeneratorClient() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onClick={copy}
-                    className="flex items-center gap-1.5 text-xs font-600 text-primary hover:bg-secondary px-3 py-1.5 rounded-lg transition-colors"
-                  >
-                    {copied ? <CheckCircle2 size={12} className="text-positive" /> : <Copy size={12} />}
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-positive font-600">Saved</span>
+                    <button
+                      onClick={copy}
+                      className="flex items-center gap-1.5 text-xs font-600 text-primary hover:bg-secondary px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      {copied ? <CheckCircle2 size={12} className="text-positive" /> : <Copy size={12} />}
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
                 </div>
-                <div className="bg-muted/40 rounded-xl p-4 text-sm text-foreground whitespace-pre-wrap leading-relaxed font-mono">
-                  {result.modelAnswer}
+                <div className="bg-muted/40 rounded-xl p-4 leading-relaxed">
+                  {renderMarkdown(result.modelAnswer)}
                 </div>
               </div>
 

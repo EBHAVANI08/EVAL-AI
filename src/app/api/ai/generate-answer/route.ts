@@ -31,7 +31,7 @@ Requirements:
 - Write a complete, exam-ready model answer
 - Use clear headings and numbered points where appropriate
 - Include ALL key points needed for full marks
-- For diagram questions, describe what should be drawn with labels
+- For diagram questions or "Diagram + Notes" style: describe the diagram in a clearly labeled section with all parts, arrows, and labels listed as bullet points (do NOT use ASCII art)
 - Match detail level to marks weightage
 - Follow ${board || 'CBSE'} conventions for answer writing
 - For numerical questions, show complete step-by-step working
@@ -76,19 +76,40 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
     const data = await res.json();
     let text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
-    text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    // Strip all markdown code fences (handles ```json, ```, etc.)
+    text = text
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
 
     let parsed: any;
     try {
       parsed = JSON.parse(text);
     } catch {
-      parsed = {
-        modelAnswer: text,
-        keyPoints: [],
-        markingScheme: [],
-        tips: '',
-        estimatedTime: '',
-      };
+      // Try extracting JSON object from surrounding text
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          parsed = null;
+        }
+      }
+      if (!parsed) {
+        parsed = {
+          modelAnswer: text,
+          keyPoints: [],
+          markingScheme: [],
+          tips: '',
+          estimatedTime: '',
+        };
+      }
+    }
+
+    // Ensure modelAnswer is a plain string (not accidentally nested JSON)
+    if (parsed.modelAnswer && typeof parsed.modelAnswer === 'object') {
+      parsed.modelAnswer = JSON.stringify(parsed.modelAnswer, null, 2);
     }
 
     return NextResponse.json(parsed);

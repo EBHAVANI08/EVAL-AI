@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Languages, Upload, X, Zap, Loader2, Globe, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Languages, Upload, X, Zap, Loader2, Globe, FileText, CheckCircle2, AlertCircle, History, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type Result = {
@@ -15,6 +15,16 @@ type Result = {
   pointsMissed: string[];
   feedbackInEnglish: string;
   feedbackInNativeLanguage: string;
+};
+
+type HistoryItem = {
+  id: string;
+  subject: string;
+  question: string;
+  maxMarks: string;
+  language: string;
+  result: Result;
+  createdAt: string;
 };
 
 const LANGUAGES = [
@@ -40,6 +50,18 @@ export default function MultilingualClient() {
   const [dragging, setDragging] = useState(false);
   const [showNative, setShowNative] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/multilingual-evaluations?limit=10')
+      .then((r) => r.json())
+      .then((data) => setHistory(data.evaluations || []))
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false));
+  }, []);
 
   function handleFile(file: File) {
     if (!file.type.startsWith('image/')) { toast.error('Please upload an image file'); return; }
@@ -115,11 +137,47 @@ Return ONLY valid JSON (no markdown fences):
       }
 
       setResult(parsed);
+
+      // Auto-save to MongoDB
+      try {
+        const saveRes = await fetch('/api/multilingual-evaluations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subject, question, maxMarks, language, result: parsed }),
+        });
+        if (saveRes.ok) {
+          const saved = await saveRes.json();
+          const newItem: HistoryItem = {
+            id: saved.id,
+            subject,
+            question,
+            maxMarks,
+            language,
+            result: parsed,
+            createdAt: new Date().toISOString(),
+          };
+          setHistory((prev) => [newItem, ...prev.slice(0, 9)]);
+        }
+      } catch {
+        // save failed silently
+      }
     } catch (err: any) {
       toast.error(err.message || 'Analysis failed');
     } finally {
       setLoading(false);
     }
+  }
+
+  function loadFromHistory(item: HistoryItem) {
+    setSubject(item.subject);
+    setQuestion(item.question);
+    setMaxMarks(item.maxMarks);
+    setLanguage(item.language);
+    setResult(item.result);
+    setImage(null);
+    setPreview(null);
+    setHistoryOpen(false);
+    toast.success('Loaded from history');
   }
 
   const scorePercent = result ? Math.round((result.score / result.maxMarks) * 100) : 0;
@@ -128,13 +186,57 @@ Return ONLY valid JSON (no markdown fences):
   return (
     <div className="animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-6">
-        <Languages size={22} className="text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Multilingual Engine</h1>
-          <p className="text-sm text-muted-foreground">Evaluate answer sheets written in any Indian language</p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2">
+          <Languages size={22} className="text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Multilingual Engine</h1>
+            <p className="text-sm text-muted-foreground">Evaluate answer sheets written in any Indian language</p>
+          </div>
         </div>
+        {history.length > 0 && (
+          <button
+            onClick={() => setHistoryOpen(!historyOpen)}
+            className="flex items-center gap-2 text-sm font-600 text-primary hover:bg-secondary px-3 py-2 rounded-xl transition-colors border border-border"
+          >
+            <History size={15} />
+            History ({history.length})
+            {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
       </div>
+
+      {/* History panel */}
+      {historyOpen && history.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-card mb-6 animate-slide-up">
+          <h3 className="font-bold text-foreground mb-3 text-sm">Previous Evaluations</h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-thin">
+            {history.map((item) => {
+              const pct = Math.round((item.result.score / item.result.maxMarks) * 100);
+              const color = pct >= 75 ? 'text-positive' : pct >= 50 ? 'text-warning' : 'text-negative';
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => loadFromHistory(item)}
+                  className="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl border border-border hover:bg-secondary/60 transition-colors gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-600 text-foreground truncate">
+                      {LANG_FLAGS[item.result.detectedLanguage] || '🌐'} {item.result.detectedLanguage} · {item.subject || 'General'}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {item.question || 'General evaluation'} · {new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <span className={`text-sm font-bold font-tabular shrink-0 ${color}`}>
+                    {item.result.score}/{item.result.maxMarks}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Feature info cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -225,6 +327,11 @@ Return ONLY valid JSON (no markdown fences):
               <p className="text-sm text-muted-foreground max-w-xs">
                 Upload any answer sheet — written in Hindi, Telugu, Tamil, or any Indian language — and let AI evaluate it.
               </p>
+              {!loadingHistory && history.length > 0 && (
+                <p className="text-xs text-primary mt-3 font-600">
+                  {history.length} previous {history.length === 1 ? 'evaluation' : 'evaluations'} saved — click History above to view
+                </p>
+              )}
             </div>
           )}
 
@@ -248,9 +355,12 @@ Return ONLY valid JSON (no markdown fences):
                       <p className="font-bold text-foreground">{result.detectedLanguage}</p>
                     </div>
                   </div>
-                  <span className="text-xs px-2.5 py-1 rounded-full bg-secondary text-primary font-600">
-                    {result.confidence}% confidence
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-secondary text-primary font-600">
+                      {result.confidence}% confidence
+                    </span>
+                    <span className="text-xs text-positive font-600">Saved</span>
+                  </div>
                 </div>
                 <div className="flex items-end gap-2">
                   <span className={`text-4xl font-bold font-tabular ${scoreColor}`}>{result.score}</span>
@@ -323,7 +433,7 @@ Return ONLY valid JSON (no markdown fences):
                 )}
               </div>
 
-              <button onClick={() => setResult(null)} className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600">
+              <button onClick={() => { setResult(null); setImage(null); setPreview(null); }} className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600">
                 Evaluate Another Sheet
               </button>
             </div>

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import AppLogo from '@/components/ui/AppLogo';
 import {
   LayoutDashboard,
@@ -54,6 +54,7 @@ const groups = [
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -151,7 +152,7 @@ export default function Sidebar() {
           {collapsed && <span className="tooltip-text">Notifications</span>}
         </div>
         <div className="tooltip-custom">
-          <div className={`flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}>
+          <div onClick={() => router.push('/settings')} className={`flex items-center gap-2 p-2 rounded-lg hover:bg-muted transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}>
             <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
               <span className="text-xs font-bold text-orange-600">T</span>
             </div>

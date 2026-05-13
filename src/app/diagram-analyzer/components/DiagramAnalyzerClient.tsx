@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { ScanLine, Upload, X, Brain, CheckCircle2, AlertCircle, Loader2, Target } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { ScanLine, Upload, X, Brain, CheckCircle2, AlertCircle, Loader2, Target, History, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type Result = {
@@ -14,6 +14,15 @@ type Result = {
   feedback: string;
 };
 
+type HistoryItem = {
+  id: string;
+  description: string;
+  subject: string;
+  maxMarks: string;
+  result: Result;
+  createdAt: string;
+};
+
 export default function DiagramAnalyzerClient() {
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -24,6 +33,18 @@ export default function DiagramAnalyzerClient() {
   const [result, setResult] = useState<Result | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/diagram-analyses?limit=10')
+      .then((r) => r.json())
+      .then((data) => setHistory(data.analyses || []))
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false));
+  }, []);
 
   function handleFile(file: File) {
     if (!file.type.startsWith('image/')) { toast.error('Please upload an image file (JPG, PNG, WEBP)'); return; }
@@ -41,7 +62,6 @@ export default function DiagramAnalyzerClient() {
     setLoading(true);
     setResult(null);
     try {
-      // Convert image to base64
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -99,6 +119,29 @@ Return ONLY valid JSON (no markdown fences):
       }
 
       setResult(parsed);
+
+      // Auto-save to MongoDB
+      try {
+        const saveRes = await fetch('/api/diagram-analyses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description, subject, maxMarks, result: parsed }),
+        });
+        if (saveRes.ok) {
+          const saved = await saveRes.json();
+          const newItem: HistoryItem = {
+            id: saved.id,
+            description,
+            subject,
+            maxMarks,
+            result: parsed,
+            createdAt: new Date().toISOString(),
+          };
+          setHistory((prev) => [newItem, ...prev.slice(0, 9)]);
+        }
+      } catch {
+        // save failed silently
+      }
     } catch (err: any) {
       toast.error(err.message || 'Analysis failed');
     } finally {
@@ -106,18 +149,71 @@ Return ONLY valid JSON (no markdown fences):
     }
   }
 
+  function loadFromHistory(item: HistoryItem) {
+    setDescription(item.description);
+    setSubject(item.subject);
+    setMaxMarks(item.maxMarks);
+    setResult(item.result);
+    setImage(null);
+    setPreview(null);
+    setHistoryOpen(false);
+    toast.success('Loaded from history');
+  }
+
   const scorePercent = result ? Math.round((result.score / Number(maxMarks)) * 100) : 0;
   const scoreColor = scorePercent >= 75 ? 'text-positive' : scorePercent >= 50 ? 'text-warning' : 'text-negative';
 
   return (
     <div className="animate-fade-in">
-      <div className="flex items-center gap-2 mb-6">
-        <ScanLine size={22} className="text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Diagram Analyzer</h1>
-          <p className="text-sm text-muted-foreground">AI-powered evaluation of student-drawn diagrams</p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2">
+          <ScanLine size={22} className="text-primary" />
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Diagram Analyzer</h1>
+            <p className="text-sm text-muted-foreground">AI-powered evaluation of student-drawn diagrams</p>
+          </div>
         </div>
+        {history.length > 0 && (
+          <button
+            onClick={() => setHistoryOpen(!historyOpen)}
+            className="flex items-center gap-2 text-sm font-600 text-primary hover:bg-secondary px-3 py-2 rounded-xl transition-colors border border-border"
+          >
+            <History size={15} />
+            History ({history.length})
+            {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
       </div>
+
+      {/* History panel */}
+      {historyOpen && history.length > 0 && (
+        <div className="bg-card border border-border rounded-2xl p-4 shadow-card mb-6 animate-slide-up">
+          <h3 className="font-bold text-foreground mb-3 text-sm">Previous Analyses</h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto scrollbar-thin">
+            {history.map((item) => {
+              const pct = Math.round((item.result.score / Number(item.maxMarks)) * 100);
+              const color = pct >= 75 ? 'text-positive' : pct >= 50 ? 'text-warning' : 'text-negative';
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => loadFromHistory(item)}
+                  className="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl border border-border hover:bg-secondary/60 transition-colors gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-600 text-foreground truncate">{item.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.subject || 'General'} · {new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  <span className={`text-sm font-bold font-tabular shrink-0 ${color}`}>
+                    {item.result.score}/{item.maxMarks}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Left: Upload + Config */}
@@ -195,6 +291,11 @@ Return ONLY valid JSON (no markdown fences):
               <p className="text-sm text-muted-foreground max-w-xs">
                 Upload a student's diagram and describe what it should show. AI will score it and provide detailed feedback.
               </p>
+              {!loadingHistory && history.length > 0 && (
+                <p className="text-xs text-primary mt-3 font-600">
+                  {history.length} previous {history.length === 1 ? 'analysis' : 'analyses'} saved — click History above to view
+                </p>
+              )}
             </div>
           )}
 
@@ -229,6 +330,7 @@ Return ONLY valid JSON (no markdown fences):
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-xs text-muted-foreground">Label Accuracy: <strong>{result.labelAccuracy}%</strong></span>
+                  <span className="text-xs text-positive font-600">Saved</span>
                 </div>
               </div>
 
@@ -294,7 +396,7 @@ Return ONLY valid JSON (no markdown fences):
                 </div>
               )}
 
-              <button onClick={() => setResult(null)} className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600">
+              <button onClick={() => { setResult(null); setImage(null); setPreview(null); }} className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600">
                 Analyze Another Diagram
               </button>
             </div>
