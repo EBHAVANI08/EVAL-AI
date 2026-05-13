@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Eye, EyeOff, GraduationCap, BookOpen, ShieldCheck, CheckCircle2, Brain } from 'lucide-react';
 import { toast } from 'sonner';
+import { signIn } from 'next-auth/react';
 
 
 type Role = 'teacher' | 'student' | 'admin';
@@ -24,11 +25,6 @@ interface SignupFormData {
   acceptTerms: boolean;
 }
 
-const mockCredentials = [
-  { role: 'teacher' as Role, email: 'priya.rajan@delhipublicschool.edu.in', password: 'Teacher@2026' },
-  { role: 'student' as Role, email: 'arjun.sharma@delhipublicschool.edu.in', password: 'Student@2026' },
-  { role: 'admin' as Role, email: 'admin@aiexaminerpro.in', password: 'Admin@2026' },
-];
 
 const roleConfig = {
   teacher: { label: 'Teacher', icon: BookOpen, color: 'text-primary', bg: 'bg-secondary border-primary' },
@@ -55,20 +51,23 @@ export default function AuthPageClient() {
 
   const handleLoginSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
-    // BACKEND: POST /api/auth/login with { email, password, role }
-    await new Promise((r) => setTimeout(r, 1200));
-    const valid = mockCredentials.find((c) => c.email === data.email && c.password === data.password);
-    if (!valid) {
-      loginForm.setError('email', { message: 'Invalid credentials — use the demo accounts below to sign in' });
+    const callbackUrl =
+      role === 'teacher' ? '/teacher-dashboard'
+      : role === 'student' ? '/student-dashboard'
+      : '/admin-dashboard';
+    const result = await signIn('credentials', {
+      email: data.email,
+      password: data.password,
+      callbackUrl,
+      redirect: false,
+    });
+    if (result?.error) {
+      loginForm.setError('email', { message: 'Invalid credentials — use the demo accounts below' });
       setIsSubmitting(false);
       return;
     }
     toast.success(`Welcome back! Signing in as ${roleConfig[role].label}...`);
-    setTimeout(() => {
-      if (role === 'teacher') window.location.href = '/teacher-dashboard';
-      else if (role === 'student') window.location.href = '/student-dashboard';
-      else if (role === 'admin') window.location.href = '/admin-dashboard';
-    }, 800);
+    window.location.href = callbackUrl;
     setIsSubmitting(false);
   };
 
@@ -91,14 +90,11 @@ export default function AuthPageClient() {
 
   const handleGoogleSignIn = async () => {
     setIsSubmitting(true);
-    toast.loading('Connecting to Google...', { id: 'google-signin' });
-    await new Promise((r) => setTimeout(r, 1400));
-    toast.success(`Signed in with Google as ${roleConfig[role].label}`, { id: 'google-signin' });
-    setTimeout(() => {
-      if (role === 'teacher') window.location.href = '/teacher-dashboard';
-      else if (role === 'student') window.location.href = '/student-dashboard';
-      else window.location.href = '/admin-dashboard';
-    }, 600);
+    const callbackUrl =
+      role === 'teacher' ? '/teacher-dashboard'
+      : role === 'student' ? '/student-dashboard'
+      : '/admin-dashboard';
+    await signIn('google', { callbackUrl });
     setIsSubmitting(false);
   };
 
