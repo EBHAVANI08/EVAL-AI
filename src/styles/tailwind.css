@@ -21,7 +21,7 @@
   --input: #F8F7FF;
   --ring: #4F46E5;
   --radius: 14px;
-  --font-sans: var(--font-plus-jakarta-sans), sans-serif;
+  --font-sans: var(--font-dm-sans), sans-serif;
 
   /* ── Semantic colors ───────────────────────────────────────────────── */
   --positive: #10B981;
@@ -80,11 +80,20 @@
     font-feature-settings: "tnum";
   }
 
-  /* ── Scrollbar ─────────────────────────────────────────────────────── */
-  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-  .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+  /* ── Modern scrollbar — global ────────────────────────────────────── */
+  ::-webkit-scrollbar               { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track         { background: transparent; }
+  ::-webkit-scrollbar-thumb         { background: rgba(79,70,229,0.18); border-radius: 100px; }
+  ::-webkit-scrollbar-thumb:hover   { background: rgba(79,70,229,0.38); }
+  ::-webkit-scrollbar-corner        { background: transparent; }
+  * { scrollbar-width: thin; scrollbar-color: rgba(79,70,229,0.18) transparent; }
+
+  /* ── Scrollbar utility (explicit override) ─────────────────────────── */
+  .scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgba(79,70,229,0.22) transparent; }
+  .scrollbar-thin::-webkit-scrollbar       { width: 5px; height: 5px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-  .scrollbar-thin::-webkit-scrollbar-thumb { background-color: var(--border); border-radius: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(79,70,229,0.22); border-radius: 100px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(79,70,229,0.42); }
 
   /* ── Glass card ────────────────────────────────────────────────────── */
   .glass {
@@ -143,7 +152,7 @@
     background: var(--grad-primary);
     color: #fff;
     font-weight: 600;
-    font-size: 13.5px;
+    font-size: 14.5px;
     letter-spacing: 0.01em;
     border-radius: 10px;
     padding: 0 18px;
@@ -171,7 +180,7 @@
     background-color: var(--secondary);
     color: var(--secondary-foreground);
     font-weight: 600;
-    font-size: 13.5px;
+    font-size: 14.5px;
     border-radius: 10px;
     padding: 0 16px;
     height: 38px;
@@ -193,7 +202,7 @@
     background-color: transparent;
     color: var(--muted-foreground);
     font-weight: 600;
-    font-size: 13.5px;
+    font-size: 14.5px;
     border-radius: 10px;
     padding: 0 14px;
     height: 38px;
@@ -213,7 +222,7 @@
     border: 1.5px solid var(--border);
     border-radius: 9px;
     padding: 9px 12px;
-    font-size: 13.5px;
+    font-size: 14.5px;
     font-family: var(--font-sans);
     color: var(--foreground);
     transition: border-color 200ms ease, box-shadow 200ms ease, background-color 150ms ease;
@@ -253,9 +262,9 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border-radius: 9px;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 500;
     color: var(--muted-foreground);
     transition: background-color 150ms ease, color 150ms ease;

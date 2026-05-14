@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   User, Mail, Phone, Calendar, BookOpen, Hash, GraduationCap,
   Edit2, Camera, Award, FileText, ClipboardList, TrendingUp,
@@ -35,7 +35,16 @@ const recentActivity = [
 ];
 
 export default function StudentProfilePage() {
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode]   = useState(false);
+  const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setAvatarSrc(url);
+  };
 
   return (
     <div className="px-8 py-6 max-w-5xl mx-auto space-y-6">
@@ -54,10 +63,27 @@ export default function StudentProfilePage() {
           <div className="flex items-end justify-between -mt-12 mb-4">
             {/* Avatar */}
             <div className="relative">
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-orange-400 to-amber-500 border-4 border-card flex items-center justify-center shadow-md">
-                <span className="text-3xl font-bold text-white">S</span>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
+              <div className="w-24 h-24 rounded-2xl border-4 border-card shadow-md overflow-hidden">
+                {avatarSrc ? (
+                  <img src={avatarSrc} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center">
+                    <span className="text-3xl font-bold text-white">S</span>
+                  </div>
+                )}
               </div>
-              <button className="absolute -bottom-1 -right-1 w-7 h-7 bg-orange-500 hover:bg-orange-600 rounded-full flex items-center justify-center shadow transition-colors">
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-7 h-7 bg-orange-500 hover:bg-orange-600 rounded-full flex items-center justify-center shadow transition-colors"
+                title="Change photo"
+              >
                 <Camera size={12} className="text-white" />
               </button>
             </div>

@@ -53,7 +53,7 @@ module.exports = {
         '2xl': 'calc(var(--radius) + 8px)',
       },
       fontFamily: {
-        sans: ['var(--font-plus-jakarta-sans)', 'sans-serif'],
+        sans: ['var(--font-dm-sans)', 'sans-serif'],
       },
       fontWeight: {
         '500': '500',

@@ -1,14 +1,13 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
-
-const mockCredentials = [
-  { email: 'priya.rajan@delhipublicschool.edu.in', password: 'Teacher@2026', name: 'Priya Rajan', role: 'teacher' },
-  { email: 'arjun.sharma@delhipublicschool.edu.in', password: 'Student@2026', name: 'Arjun Sharma', role: 'student' },
-  { email: 'admin@aiexaminerpro.in', password: 'Admin@2026', name: 'Admin', role: 'admin' },
-];
+import { getDb } from '@/lib/mongodb';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  pages: { signIn: '/login', error: '/login' },
+  session: { strategy: 'jwt' },
+  trustHost: true,
+
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -17,32 +16,82 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Credentials({
       name: 'credentials',
       credentials: {
-        email: { label: 'Email', type: 'email' },
+        email:    { label: 'Email',    type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        const user = mockCredentials.find(
-          (c) => c.email === credentials?.email && c.password === credentials?.password
-        );
-        if (!user) return null;
-        return { id: user.email, name: user.name, email: user.email, role: user.role };
+        if (!credentials?.email || !credentials?.password) return null;
+        try {
+          const db = await getDb();
+          const user = await db.collection('users').findOne({
+            email:    credentials.email,
+            password: credentials.password,
+          });
+          if (!user) return null;
+          return {
+            id:     user._id.toString(),
+            name:   user.name,
+            email:  user.email,
+            role:   user.role,
+            rollNo: user.rollNo ?? null,
+          };
+        } catch (err) {
+          console.error('Credentials authorize error:', err);
+          return null;
+        }
       },
     }),
   ],
-  trustHost: true,
-  pages: {
-    signIn: '/',
-    error: '/',
-  },
+
   callbacks: {
-    async session({ session, token }) {
-      if (token?.role) (session.user as any).role = token.role;
-      return session;
+    async signIn({ user, account }) {
+      if (account?.provider === 'google' && user.email) {
+        try {
+          const db = await getDb();
+          await db.collection('users').updateOne(
+            { email: user.email },
+            {
+              $setOnInsert: {
+                name:      user.name ?? 'Teacher',
+                email:     user.email,
+                role:      'teacher',
+                provider:  'google',
+                createdAt: new Date(),
+              },
+            },
+            { upsert: true }
+          );
+        } catch (err) {
+          console.error('Google signIn DB save error:', err);
+        }
+      }
+      return true;
     },
-    async jwt({ token, user }) {
-      if (user) token.role = (user as any).role;
+
+    async jwt({ token, user, account }) {
+      // Base: set role/rollNo from user on sign-in
+      if (user) {
+        token.role   = (user as any).role   ?? null;
+        token.rollNo = (user as any).rollNo ?? null;
+      }
+      // Google: fetch stored role from MongoDB (may have been updated by admin)
+      if (account?.provider === 'google' && token.email) {
+        try {
+          const db = await getDb();
+          const dbUser = await db.collection('users').findOne({ email: token.email });
+          if (dbUser) {
+            token.role   = dbUser.role;
+            token.rollNo = dbUser.rollNo ?? null;
+          }
+        } catch { /* non-fatal */ }
+      }
       return token;
     },
+
+    async session({ session, token }) {
+      if (token.role)   (session.user as any).role   = token.role;
+      if (token.rollNo) (session.user as any).rollNo = token.rollNo;
+      return session;
+    },
   },
-  session: { strategy: 'jwt' },
 });

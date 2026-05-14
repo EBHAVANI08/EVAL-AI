@@ -6,12 +6,13 @@ import { usePathname } from 'next/navigation';
 import { Bell } from 'lucide-react';
 
 const pageMeta: Record<string, { title: string; subtitle: string }> = {
-  '/student-dashboard': { title: 'Student Dashboard', subtitle: 'Track your exam results and performance' },
-  '/student-dashboard/results': { title: 'My Results', subtitle: 'View all your evaluated answer sheets' },
+  '/student-dashboard':          { title: 'Student Dashboard',      subtitle: 'Track your exam results and performance' },
+  '/student-dashboard/upload':   { title: 'Upload Answer Sheet',    subtitle: 'Submit your answer sheet for teacher evaluation' },
+  '/student-dashboard/results':  { title: 'My Results',             subtitle: 'View all your evaluated answer sheets' },
   '/student-dashboard/performance': { title: 'Performance Analytics', subtitle: 'Analyse your academic performance over time' },
-  '/student-dashboard/downloads': { title: 'Downloads', subtitle: 'Download your evaluated papers and reports' },
-  '/student-dashboard/settings': { title: 'Settings', subtitle: 'Manage your account and preferences' },
-  '/student-dashboard/profile': { title: 'My Profile', subtitle: 'Manage your student profile and information' },
+  '/student-dashboard/downloads': { title: 'Downloads',             subtitle: 'Download your evaluated papers and reports' },
+  '/student-dashboard/settings': { title: 'Settings',               subtitle: 'Manage your account and preferences' },
+  '/student-dashboard/profile':  { title: 'My Profile',             subtitle: 'Manage your student profile and information' },
 };
 
 export default function StudentHeader() {
