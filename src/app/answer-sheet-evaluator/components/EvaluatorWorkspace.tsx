@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Upload, Loader2, CheckCircle2, X, AlertTriangle, Brain, RefreshCw, ScanLine } from 'lucide-react';
+import { Upload, Loader2, CheckCircle2, X, AlertTriangle, Brain, RefreshCw, ScanLine, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
 import dynamic from 'next/dynamic';
 import StudentInfoPanel from './StudentInfoPanel';
@@ -11,6 +11,7 @@ import ScoreSummaryPanel from './ScoreSummaryPanel';
 import type { ExtractedPaper } from '@/app/question-paper-analyzer/components/QuestionPaperAnalyzerClient';
 
 const ScannerCapture = dynamic(() => import('@/components/ui/ScannerCapture'), { ssr: false });
+const CameraScanner = dynamic(() => import('@/components/ui/CameraScanner'), { ssr: false });
 
 export type KeyPoint = {
   point: string;        // e.g. "Mentions Newton's second law"
@@ -48,6 +49,28 @@ export type StudentInfo = {
   board: string;
 };
 
+
+// Compress a dataUrl to a small thumbnail for DB storage (keeps MongoDB doc small)
+async function compressThumbnail(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 700;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
+        else { width = Math.round((width * MAX) / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.65));
+    };
+    img.onerror = () => resolve(dataUrl); // fallback: store as-is
+    img.src = dataUrl;
+  });
+}
 
 async function compressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -91,6 +114,48 @@ async function uploadPdfToGemini(file: File): Promise<{ fileUri: string; mimeTyp
 
 type EvalStep = 'upload' | 'evaluating' | 'done';
 
+// ── Incremental JSON object extractor ──────────────────────────────────────
+// Scans accumulated text for complete {...} objects inside a JSON array and
+// returns them so they can be rendered before the full array is complete.
+function extractCompleteObjects(text: string, fromPos: number): { objects: any[]; newPos: number } {
+  const objects: any[] = [];
+  let i = fromPos;
+
+  while (i < text.length) {
+    if (text[i] !== '{') { i++; continue; }
+
+    // Walk forward tracking depth to find the matching '}'
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let j = i;
+
+    while (j < text.length) {
+      const c = text[j];
+      if (esc) { esc = false; j++; continue; }
+      if (c === '\\' && inStr) { esc = true; j++; continue; }
+      if (c === '"') { inStr = !inStr; j++; continue; }
+      if (!inStr) {
+        if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) break; }
+      }
+      j++;
+    }
+
+    if (depth !== 0 || j >= text.length) break; // incomplete — wait
+
+    try {
+      const obj = JSON.parse(text.slice(i, j + 1));
+      objects.push(obj);
+      i = j + 1;
+    } catch {
+      break; // malformed — wait for more data
+    }
+  }
+
+  return { objects, newPos: i };
+}
+
 export default function EvaluatorWorkspace() {
   const searchParams = useSearchParams();
   const [questions, setQuestions] = useState<QuestionEvaluation[]>([]);
@@ -101,12 +166,16 @@ export default function EvaluatorWorkspace() {
   const [extractedPaper, setExtractedPaper] = useState<ExtractedPaper | null>(null);
   const [evalError, setEvalError] = useState('');
   const [evalId, setEvalId] = useState<string | null>(null);
-  const [inputMode, setInputMode] = useState<'upload' | 'scan'>('upload');
+  const [inputMode, setInputMode] = useState<'upload' | 'scan' | 'camera'>('upload');
   const [scannedPages, setScannedPages] = useState<File[]>([]);
   const [isLoadingEval, setIsLoadingEval] = useState(false);
+  const [liveQuestions, setLiveQuestions] = useState<QuestionEvaluation[]>([]);
+  const [livePageLabel, setLivePageLabel] = useState('');
+  const [scannedImages, setScannedImages] = useState<string[]>([]); // saved camera thumbnails
   const [studentInfo, setStudentInfo] = useState<StudentInfo>({
     name: '', rollNo: '', class: '', school: '', subject: '', board: '',
   });
+  const [mobilePanel, setMobilePanel] = useState<'student' | 'questions' | 'score'>('questions');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // If ?id= is in the URL, load the saved evaluation instead of showing upload screen
@@ -131,6 +200,9 @@ export default function EvaluatorWorkspace() {
             subject: data.studentInfo.subject || '',
             board: data.studentInfo.board || '',
           });
+        }
+        if (Array.isArray(data.scannedImages) && data.scannedImages.length > 0) {
+          setScannedImages(data.scannedImages);
         }
         setEvalStep('done');
       })
@@ -175,67 +247,84 @@ export default function EvaluatorWorkspace() {
     setAnswerFile(f);
   };
 
-  // Evaluate a single file via Gemini and return the parsed question array
-  const evaluateSingleFile = async (file: File, prompt: string): Promise<any[]> => {
-    const isPdf = file.type === 'application/pdf';
-    let visionPayload: Record<string, string>;
-
-    if (isPdf) {
+  // Build vision payload for a file (shared between streaming + fallback)
+  const buildVisionPayload = async (file: File): Promise<Record<string, string>> => {
+    if (file.type === 'application/pdf') {
       const { fileUri, mimeType } = await uploadPdfToGemini(file);
-      visionPayload = { fileUri, mimeType };
-    } else {
-      const dataUri = await compressImage(file);
-      const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);
-      if (!match) throw new Error('Failed to process image for AI');
-      visionPayload = { mimeType: match[1], base64Data: match[2] };
+      return { fileUri, mimeType };
     }
+    const dataUri = await compressImage(file);
+    const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);
+    if (!match) throw new Error('Failed to process image for AI');
+    return { mimeType: match[1], base64Data: match[2] };
+  };
 
-    const response = await fetch('/api/ai/gemini-vision', {
+  // Stream evaluation — yields raw question objects one by one as Gemini responds
+  const streamEvaluatePage = async (
+    visionPayload: Record<string, string>,
+    prompt: string,
+    onQuestion: (q: any) => void
+  ): Promise<void> => {
+    const res = await fetch('/api/ai/gemini-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...visionPayload, prompt }),
     });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      throw new Error(err.error || `Gemini request failed: ${response.status}`);
-    }
-    const { text: raw } = await response.json();
 
-    const start = raw.indexOf('[');
-    if (start === -1) throw new Error('No JSON array found in AI response');
-
-    let parsed: any[] | null = null;
-    const fullEnd = raw.lastIndexOf(']');
-    if (fullEnd > start) {
-      try {
-        const cleaned = raw.slice(start, fullEnd + 1).replace(/,\s*([}\]])/g, '$1');
-        const attempt = JSON.parse(cleaned);
-        if (Array.isArray(attempt) && attempt.length > 0) parsed = attempt;
-      } catch { /* fall through */ }
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Stream failed (${res.status}): ${errText}`);
     }
-    if (!parsed) {
-      const partial = raw.slice(start);
-      const lastComplete = partial.lastIndexOf('},');
-      if (lastComplete > 0) {
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = '';
+    let accumulated = '';
+    let parsePos = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      sseBuffer += decoder.decode(value, { stream: true });
+      const lines = sseBuffer.split('\n');
+      sseBuffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+
         try {
-          const salvaged = (partial.slice(0, lastComplete + 1) + ']').replace(/,\s*([}\]])/g, '$1');
-          const attempt = JSON.parse(salvaged);
-          if (Array.isArray(attempt) && attempt.length > 0) {
-            parsed = attempt;
-            toast.error(`Page truncated — recovered ${attempt.length} questions. Some may be missing.`);
+          const chunk = JSON.parse(data);
+          const text: string = chunk.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          if (!text) continue;
+          accumulated += text;
+
+          // Try to extract complete JSON objects from accumulated text
+          const { objects, newPos } = extractCompleteObjects(accumulated, parsePos);
+          parsePos = newPos;
+          for (const obj of objects) {
+            onQuestion(obj);
           }
-        } catch { /* ignore */ }
+        } catch { /* skip malformed SSE chunk */ }
       }
     }
-    if (!parsed || parsed.length === 0) throw new Error('No questions found on this page');
-    return parsed;
+
+    // Final pass — extract anything remaining after stream ends
+    const { objects } = extractCompleteObjects(accumulated, parsePos);
+    for (const obj of objects) {
+      onQuestion(obj);
+    }
   };
 
-  const handleEvaluate = async () => {
-    const filesToProcess = inputMode === 'scan' ? scannedPages : answerFile ? [answerFile] : [];
+  const handleEvaluate = async (directFiles?: File[], directDataUrls?: string[]) => {
+    const filesToProcess = directFiles
+      ?? ((inputMode === 'scan' || inputMode === 'camera') ? scannedPages : answerFile ? [answerFile] : []);
     if (filesToProcess.length === 0) return;
     setEvalStep('evaluating');
     setEvalError('');
+    setLiveQuestions([]);
 
     try {
 
@@ -257,11 +346,14 @@ export default function EvaluatorWorkspace() {
         knownQuestionsRef = `
 \n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 QUESTION PAPER REFERENCE — USE ONLY FOR CORRECT ANSWERS AND MARKS
-⚠️ WARNING: This list has ${extractedPaper.questions.length} questions but the full paper may have 35+ questions.
-⚠️ DO NOT use this count to decide how many questions to return.
-⚠️ Your output MUST be based on what you READ on the answer sheet image, not this list.
+🚫 CRITICAL — READ THIS CAREFULLY:
+  1. You MUST ONLY include questions you can PHYSICALLY SEE written on the answer sheet image.
+  2. Do NOT create entries for questions from this reference list unless that question number is VISIBLY WRITTEN on the answer sheet.
+  3. Do NOT output "Question text not provided in reference" entries. If you cannot see a question on the sheet, skip it entirely.
+  4. This list is a LOOKUP TABLE for correct answers and marks — it is NOT a list of questions to output.
+  5. The student may have answered only 5 questions or 30 questions — your output must match EXACTLY what is on the sheet.
 Subject: ${extractedPaper.metadata.subject} | Total Marks: ${extractedPaper.metadata.totalMarks}${sectionRules}
-Reference questions (partial — answer sheet may have more):
+Reference questions (lookup only — do NOT output questions not visible on the answer sheet):
 ${extractedPaper.questions.map((q) => `  Q.${q.qNo} [Sec ${q.section}] [${q.maxMarks}m] [${q.type}]: ${q.questionText.slice(0, 100)}`).join('\n')}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
       }
@@ -269,14 +361,15 @@ ${extractedPaper.questions.map((q) => `  Q.${q.qNo} [Sec ${q.section}] [${q.maxM
       const prompt = `You are an expert AI examiner evaluating a student answer sheet.
 
 ══════════════════════════════════════════════════════════
-RULE #1 — NO LIMITS ON QUESTION COUNT (MOST IMPORTANT):
+RULE #1 — ONLY OUTPUT WHAT YOU SEE ON THE ANSWER SHEET:
 ══════════════════════════════════════════════════════════
 BEFORE you score anything, physically scan EVERY page of the answer sheet image from TOP to BOTTOM.
-Count EVERY question number you see written: Q.1, Q.2, Q.3 ... Q.18, Q.19, Q.20, Q.21 ... all the way to the last question.
-Your JSON output MUST contain one entry for EVERY question number you find on the sheet.
-If the sheet has 37 questions → return 37+ entries.
-If the sheet has 20 questions → return 20+ entries.
-THERE IS NO MAXIMUM. DO NOT STOP EARLY. DO NOT SKIP ANY QUESTION.${paperMarksHint}${knownQuestionsRef}
+Count EVERY question number you see WRITTEN ON THE SHEET: Q.1, Q.2, Q.3 ... all the way to the last question.
+Your JSON output MUST contain one entry for EVERY question number VISIBLE ON THE SHEET — no more, no less.
+If the sheet has 10 questions → return 10 entries.
+If the sheet has 37 questions → return 37 entries.
+🚫 DO NOT include questions from a reference list that are NOT written on the answer sheet.
+🚫 DO NOT create "not provided in reference" entries — if you cannot see the question, do not include it.${paperMarksHint}${knownQuestionsRef}
 
 ══════════════════════════════════════════════════════════
 RULE #2 — CASE STUDY / MULTI-PART QUESTIONS:
@@ -292,9 +385,10 @@ VERIFY: sum of sub-part maxMarks MUST equal the parent total (Q.36 sub-parts mus
 ══════════════════════════════════════════════════════════
 RULE #3 — UNATTEMPTED / SKIPPED QUESTIONS:
 ══════════════════════════════════════════════════════════
-Indian board exams allow "Answer any X of Y" choices. Students skip some questions.
-- Student wrote an answer → score it, set maxMarks to the correct value
-- Question is blank or skipped → maxMarks: 0, aiScore: 0, ocrText: "[No answer]"
+Only include a question if its question NUMBER is WRITTEN on the answer sheet (e.g., "Q.5" or "5." visible on the page).
+- Question number is written AND student wrote an answer → score it normally
+- Question number is written BUT the answer space is blank/crossed out → maxMarks: 0, aiScore: 0, ocrText: "[No answer]"
+- Question number is NOT visible on the answer sheet AT ALL → DO NOT include it in output
 
 ══════════════════════════════════════════════════════════
 OUTPUT FORMAT — return ONLY this JSON array, nothing else:
@@ -354,38 +448,26 @@ SCORING:
 - hasDiagram: true only if the student actually drew something
 
 FINAL COMPLETENESS CHECK before outputting:
-1. Did I evaluate every question from Q.1 to the last question visible on the sheet?
-2. Do all sub-part marks sum to the correct parent total?
-3. Is my output a valid JSON array with NO markdown fences?
+1. Did I include ONLY questions whose question number is PHYSICALLY VISIBLE on the answer sheet?
+2. Did I accidentally include questions from the reference list that are NOT on the answer sheet? If yes → remove them.
+3. Do all sub-part marks sum to the correct parent total?
+4. Is my output a valid JSON array with NO markdown fences?
 Output the JSON array now:`;
 
-      // Evaluate all pages sequentially and merge results
-      let allRawQuestions: any[] = [];
-      for (let pageIdx = 0; pageIdx < filesToProcess.length; pageIdx++) {
-        if (filesToProcess.length > 1) {
-          toast.loading(`Evaluating page ${pageIdx + 1} of ${filesToProcess.length}…`, { id: 'page-progress' });
-        }
-        const pageRaw = await evaluateSingleFile(filesToProcess[pageIdx], prompt);
-        allRawQuestions = [...allRawQuestions, ...pageRaw];
-      }
-      if (filesToProcess.length > 1) toast.dismiss('page-progress');
+      // ── Streaming evaluation — questions appear in real-time ──────────────
+      const allRawQuestions: any[] = [];
+      let globalIdx = 0;
 
-      if (allRawQuestions.length === 0) throw new Error('No questions could be evaluated — response may be too large. Try splitting the answer sheet into fewer pages.');
-
-      const parsed = allRawQuestions;
-
-      const evaluated: QuestionEvaluation[] = parsed.map((q: any, i: number) => {
+      const buildLiveQuestion = (q: any, idx: number): QuestionEvaluation => {
         const qKeyPoints: KeyPoint[] = Array.isArray(q.keyPoints) ? q.keyPoints : [];
         const qSemanticSim = typeof q.semanticSimilarity === 'number'
           ? Math.min(100, Math.max(0, Math.round(q.semanticSimilarity))) : 70;
         const qMaxMarks = typeof q.maxMarks === 'number' ? q.maxMarks : 0;
         const qAiScore = typeof q.aiScore === 'number' ? q.aiScore : 0;
-
-        // Hybrid score: weighted blend of key-point coverage + semantic similarity + AI score
         let hybridScore = 0;
         if (qMaxMarks > 0) {
           const kpCoverage = qKeyPoints.length > 0
-            ? qKeyPoints.reduce((s, kp) => s + (kp.covered && !kp.partial ? 1 : kp.partial ? 0.5 : 0), 0) / qKeyPoints.length
+            ? qKeyPoints.reduce((s: number, kp: KeyPoint) => s + (kp.covered && !kp.partial ? 1 : kp.partial ? 0.5 : 0), 0) / qKeyPoints.length
             : null;
           const semRatio = qSemanticSim / 100;
           const aiRatio = qAiScore / qMaxMarks;
@@ -394,10 +476,9 @@ Output the JSON array now:`;
             : 0.60 * semRatio + 0.40 * aiRatio;
           hybridScore = Math.min(Math.round(hybridRatio * qMaxMarks * 2) / 2, qMaxMarks);
         }
-
         return {
-          id: `q-${String(i + 1).padStart(3, '0')}`,
-          qNo: q.qNo || String(i + 1),
+          id: `q-${String(idx + 1).padStart(3, '0')}`,
+          qNo: q.qNo || String(idx + 1),
           section: q.section || 'A',
           questionText: q.questionText || '',
           aiAnswer: q.aiAnswer || '',
@@ -415,7 +496,27 @@ Output the JSON array now:`;
           language: q.language || 'English',
           status: q.status || 'pending',
         };
-      });
+      };
+
+      for (let pageIdx = 0; pageIdx < filesToProcess.length; pageIdx++) {
+        const pageLabel = filesToProcess.length > 1
+          ? `Page ${pageIdx + 1}/${filesToProcess.length}`
+          : 'Scanning…';
+        setLivePageLabel(pageLabel);
+
+        const visionPayload = await buildVisionPayload(filesToProcess[pageIdx]);
+
+        await streamEvaluatePage(visionPayload, prompt, (rawQ) => {
+          allRawQuestions.push(rawQ);
+          const liveQ = buildLiveQuestion(rawQ, globalIdx++);
+          setLiveQuestions((prev) => [...prev, liveQ]);
+        });
+      }
+
+      if (allRawQuestions.length === 0) throw new Error('No questions could be evaluated — try a clearer image.');
+
+      // Re-build final evaluated array using same helper (IDs are now stable)
+      const evaluated: QuestionEvaluation[] = allRawQuestions.map((q, i) => buildLiveQuestion(q, i));
 
       // === Enforce section caps ONLY for explicit "answer any X of Y" constraints ===
       // Do NOT apply caps derived purely from paper question count — the extracted paper
@@ -461,6 +562,13 @@ Output the JSON array now:`;
 
       // Auto-save to MongoDB right after AI evaluation
       try {
+        // Compress camera thumbnails for storage (only if camera pages were provided)
+        let imagesToStore: string[] = [];
+        if (directDataUrls && directDataUrls.length > 0) {
+          imagesToStore = await Promise.all(directDataUrls.map(compressThumbnail));
+          setScannedImages(imagesToStore);
+        }
+
         const saveRes = await fetch('/api/evaluations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -476,6 +584,7 @@ Output the JSON array now:`;
                 }
               : {},
             questions: evaluated,
+            ...(imagesToStore.length > 0 && { scannedImages: imagesToStore }),
           }),
         });
         if (saveRes.ok) {
@@ -506,9 +615,12 @@ Output the JSON array now:`;
     setAnswerFile(null);
     setScannedPages([]);
     setInputMode('upload');
+    setLiveQuestions([]);
+    setLivePageLabel('');
     setQuestions([]);
     setEvalError('');
     setEvalId(null);
+    setScannedImages([]);
   };
 
   const updateQuestion = (id: string, field: 'teacherScore' | 'comment', value: number | string | null) => {
@@ -541,59 +653,72 @@ Output the JSON array now:`;
     const readyToEvaluate = inputMode === 'upload' ? !!answerFile : scannedPages.length > 0;
 
     return (
-      <div className="flex-1 overflow-y-auto p-6 lg:p-8">
-        <div className="max-w-2xl mx-auto">
+      <div className="flex-1 overflow-y-auto p-5 lg:p-8">
+        <div className="max-w-2xl mx-auto space-y-5">
 
-          {/* Question paper context indicator */}
+          {/* Question paper context banner */}
           {extractedPaper ? (
-            <div className="flex items-center gap-3 p-4 bg-positive-bg border border-positive/20 rounded-xl mb-6">
-              <CheckCircle2 size={18} className="text-positive shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-600 text-foreground">Question paper loaded</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {extractedPaper.metadata.subject} · {extractedPaper.questions.length} questions · {extractedPaper.metadata.totalMarks} marks
-                </p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 px-4 py-3 bg-positive-bg border border-positive/20 rounded-xl">
+                <CheckCircle2 size={16} className="text-positive shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-600 text-foreground">Question paper loaded</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {extractedPaper.metadata.subject} · {extractedPaper.questions.length} questions · {extractedPaper.metadata.totalMarks} marks
+                  </p>
+                </div>
+                <button
+                  onClick={() => { sessionStorage.removeItem('extractedPaper'); setExtractedPaper(null); }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-muted"
+                >
+                  <X size={11} /> Clear
+                </button>
               </div>
-              <button
-                onClick={() => { sessionStorage.removeItem('extractedPaper'); setExtractedPaper(null); }}
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-              >
-                <X size={12} /> Clear
-              </button>
+              {extractedPaper.metadata.totalMarks > 0 &&
+                extractedPaper.questions.length > 0 &&
+                extractedPaper.metadata.totalMarks / extractedPaper.questions.length < 0.5 && (
+                <div className="flex items-start gap-2.5 px-4 py-3 bg-warning-bg border border-warning/20 rounded-xl">
+                  <AlertTriangle size={13} className="text-warning shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    <strong className="text-foreground">Marks may be wrong</strong> — {extractedPaper.metadata.totalMarks} marks for {extractedPaper.questions.length} questions is too low.{' '}
+                    <button onClick={() => { sessionStorage.removeItem('extractedPaper'); setExtractedPaper(null); }} className="text-primary underline">Clear and re-analyze</button>.
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="flex items-start gap-3 p-4 bg-warning-bg border border-warning/20 rounded-xl mb-6">
-              <AlertTriangle size={18} className="text-warning shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 px-4 py-3 bg-warning-bg border border-warning/20 rounded-xl">
+              <AlertTriangle size={15} className="text-warning shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-600 text-foreground">No question paper loaded</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  AI will evaluate based on the answer sheet content alone. For better accuracy,{' '}
-                  <a href="/question-paper-analyzer" className="text-primary underline">analyze the question paper first</a>.
+                  AI will evaluate from the answer sheet alone.{' '}
+                  <a href="/question-paper-analyzer" className="text-primary underline hover:text-primary/80">Analyze a question paper first</a> for better accuracy.
                 </p>
               </div>
             </div>
           )}
 
           {/* Student info form */}
-          <div className="mb-6 p-4 border border-border rounded-xl bg-card">
-            <p className="text-sm font-700 text-foreground mb-3">Student Information</p>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
+            <p className="section-header mb-4">Student Information</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
-                { key: 'name', label: 'Student Name', placeholder: 'e.g. Priya Sharma' },
-                { key: 'rollNo', label: 'Roll Number', placeholder: 'e.g. 2024001' },
-                { key: 'class', label: 'Class', placeholder: 'e.g. 10A' },
-                { key: 'school', label: 'School', placeholder: 'e.g. Delhi Public School' },
-                { key: 'subject', label: 'Subject', placeholder: 'e.g. Mathematics' },
-                { key: 'board', label: 'Board', placeholder: 'e.g. CBSE' },
+                { key: 'name',    label: 'Student Name', placeholder: 'e.g. Priya Sharma' },
+                { key: 'rollNo',  label: 'Roll Number',  placeholder: 'e.g. 2024001' },
+                { key: 'class',   label: 'Class',        placeholder: 'e.g. 10A' },
+                { key: 'school',  label: 'School',       placeholder: 'e.g. Delhi Public School' },
+                { key: 'subject', label: 'Subject',      placeholder: 'e.g. Mathematics' },
+                { key: 'board',   label: 'Board',        placeholder: 'e.g. CBSE' },
               ].map(({ key, label, placeholder }) => (
                 <div key={key}>
-                  <label className="block text-xs font-600 text-muted-foreground mb-1">{label}</label>
+                  <label className="block text-xs font-600 text-muted-foreground mb-1.5">{label}</label>
                   <input
                     type="text"
                     value={studentInfo[key as keyof StudentInfo]}
                     onChange={(e) => setStudentInfo((prev) => ({ ...prev, [key]: e.target.value }))}
                     placeholder={placeholder}
-                    className="w-full px-3 py-2 text-sm input-field rounded-lg"
+                    className="input-field text-sm"
                   />
                 </div>
               ))}
@@ -601,74 +726,93 @@ Output the JSON array now:`;
           </div>
 
           {/* Input mode tabs */}
-          <div className="flex gap-1 p-1 bg-muted rounded-xl mb-5">
-            <button
-              onClick={() => { setInputMode('upload'); setScannedPages([]); }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-600 transition-colors ${
-                inputMode === 'upload' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Upload size={15} />
-              Upload File
-            </button>
-            <button
-              onClick={() => { setInputMode('scan'); setAnswerFile(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-600 transition-colors ${
-                inputMode === 'scan' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <ScanLine size={15} />
-              Import Scanned Pages
-            </button>
+          <div className="flex gap-1 p-1 bg-muted rounded-xl">
+            {([
+              { mode: 'upload', icon: Upload, label: 'Upload File' },
+              { mode: 'camera', icon: Camera, label: 'Camera Scan' },
+              { mode: 'scan',   icon: ScanLine, label: 'Import Files' },
+            ] as { mode: 'upload' | 'camera' | 'scan'; icon: React.ElementType; label: string }[]).map(({ mode, icon: Icon, label }) => (
+              <button
+                key={mode}
+                onClick={() => { setInputMode(mode); setAnswerFile(null); setScannedPages([]); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-600 transition-all ${
+                  inputMode === mode
+                    ? 'bg-card shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon size={14} />
+                <span className="hidden xs:inline sm:inline">{label}</span>
+              </button>
+            ))}
           </div>
 
           {/* Upload mode */}
           {inputMode === 'upload' && (
-            <>
-              <div
-                className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors cursor-pointer ${
-                  dragOver ? 'border-primary bg-primary/5' : answerFile ? 'border-positive bg-positive-bg' : 'border-border hover:border-primary/50 hover:bg-muted/30'
-                }`}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                  className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-                />
-                {answerFile ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <CheckCircle2 size={40} className="text-positive" />
-                    <div>
-                      <p className="font-600 text-foreground">{answerFile.name}</p>
-                      <p className="text-sm text-muted-foreground mt-1">{(answerFile.size / 1024 / 1024).toFixed(2)} MB · Ready to evaluate</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setAnswerFile(null); }}
-                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                    >
-                      <X size={12} /> Remove file
-                    </button>
+            <div
+              className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center transition-all cursor-pointer ${
+                dragOver
+                  ? 'border-primary bg-primary/5 scale-[1.01]'
+                  : answerFile
+                  ? 'border-positive bg-positive-bg'
+                  : 'border-border hover:border-primary/40 hover:bg-muted/20'
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+              />
+              {answerFile ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-positive-bg border border-positive/20 flex items-center justify-center">
+                    <CheckCircle2 size={28} className="text-positive" />
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-                      <Upload size={28} className="text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-600 text-foreground">Drop answer sheet here</p>
-                      <p className="text-sm text-muted-foreground mt-1">or click to browse · PDF, JPG, PNG, WebP · Max 20 MB</p>
-                    </div>
+                  <div>
+                    <p className="font-600 text-foreground text-sm">{answerFile.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{(answerFile.size / 1024 / 1024).toFixed(2)} MB · Ready to evaluate</p>
                   </div>
-                )}
-              </div>
-            </>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setAnswerFile(null); }}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-negative transition-colors"
+                  >
+                    <X size={11} /> Remove file
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                    <Upload size={26} className="text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-600 text-foreground">Drop answer sheet here</p>
+                    <p className="text-sm text-muted-foreground mt-1">or click to browse</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">PDF, JPG, PNG, WebP · Max 20 MB</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Camera mode — auto-evaluates on capture */}
+          {inputMode === 'camera' && (
+            <CameraScanner
+              confirmLabel="Scan & Evaluate Now"
+              onCapture={(pages) => {
+                const files = pages.map((p) => p.file);
+                const dataUrls = pages.map((p) => p.dataUrl);
+                setScannedPages(files);
+                // Auto-start evaluation immediately — pass dataUrls for DB storage
+                handleEvaluate(files, dataUrls);
+              }}
+            />
           )}
 
           {/* Scan mode */}
@@ -682,10 +826,10 @@ Output the JSON array now:`;
             />
           )}
 
-          {/* Scanned pages ready indicator */}
-          {inputMode === 'scan' && scannedPages.length > 0 && (
-            <div className="mt-4 flex items-center gap-3 p-3 bg-positive-bg border border-positive/20 rounded-xl">
-              <CheckCircle2 size={16} className="text-positive shrink-0" />
+          {/* Scanned/camera pages ready indicator */}
+          {(inputMode === 'scan' || inputMode === 'camera') && scannedPages.length > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-positive-bg border border-positive/20 rounded-xl">
+              <CheckCircle2 size={15} className="text-positive shrink-0" />
               <p className="text-sm font-600 text-foreground">
                 {scannedPages.length} page{scannedPages.length > 1 ? 's' : ''} captured — AI will evaluate all pages in sequence
               </p>
@@ -693,79 +837,179 @@ Output the JSON array now:`;
           )}
 
           {evalError && (
-            <div className="mt-4 flex items-start gap-2 p-4 bg-negative-bg rounded-lg text-sm text-red-700">
-              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-              <span>{evalError}</span>
+            <div className="flex items-start gap-2.5 px-4 py-3 bg-negative-bg border border-negative/20 rounded-xl">
+              <AlertTriangle size={14} className="text-negative shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700">{evalError}</p>
             </div>
           )}
 
           <button
-            onClick={handleEvaluate}
+            onClick={() => handleEvaluate()}
             disabled={!readyToEvaluate}
-            className="mt-6 w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-600 py-3 rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-primary w-full h-12 text-sm gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <Brain size={18} />
-            {inputMode === 'scan' && scannedPages.length > 1
-              ? `Evaluate ${scannedPages.length} Scanned Pages with AI`
+            <Brain size={17} />
+            {(inputMode === 'scan' || inputMode === 'camera') && scannedPages.length > 1
+              ? `Evaluate ${scannedPages.length} ${inputMode === 'camera' ? 'Camera' : 'Scanned'} Pages with AI`
               : 'Evaluate Answer Sheet with AI'}
           </button>
+
         </div>
       </div>
     );
   }
 
-  // Evaluating step
+  // Evaluating step — real-time streaming display
   if (evalStep === 'evaluating') {
+    const liveTotal = liveQuestions.reduce((s, q) => s + q.maxMarks, 0);
+    const liveScored = liveQuestions.reduce((s, q) => s + q.aiScore, 0);
+
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
-        <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
-          <Loader2 size={36} className="text-primary animate-spin" />
-        </div>
-        <div className="text-center">
-          <h2 className="text-xl font-700 text-foreground mb-2">Evaluating Answer Sheet…</h2>
-          <p className="text-muted-foreground text-sm max-w-md">
-            AI is reading the answer sheet, mapping answers to questions, and generating scores with reasoning.
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 w-full max-w-sm">
-          {['Extracting text via OCR', 'Mapping answers to questions', 'Scoring each answer', 'Generating AI reasoning', 'Detecting diagrams & language'].map((s, i) => (
-            <div key={s} className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 size={12} className="text-primary animate-spin shrink-0" style={{ animationDelay: `${i * 0.15}s` }} />
-              {s}
+      <div className="flex-1 overflow-y-auto p-5 lg:p-8">
+        {/* Header bar */}
+        <div className="flex items-center gap-3 mb-6 max-w-3xl mx-auto">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
+            <Loader2 size={20} className="text-primary animate-spin" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-700 text-foreground">
+              Real-Time Evaluation {livePageLabel ? `· ${livePageLabel}` : ''}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {liveQuestions.length === 0
+                ? 'AI is reading the answer sheet…'
+                : `${liveQuestions.length} question${liveQuestions.length > 1 ? 's' : ''} evaluated · ${liveScored}/${liveTotal} marks so far`}
+            </p>
+          </div>
+          {liveQuestions.length > 0 && (
+            <div className="text-right shrink-0 bg-primary/5 border border-primary/15 rounded-xl px-3 py-1.5">
+              <span className="text-xl font-800 text-primary font-tabular">{liveScored}</span>
+              <span className="text-sm text-muted-foreground font-500">/{liveTotal}</span>
             </div>
-          ))}
+          )}
         </div>
+
+        {/* Live question cards */}
+        {liveQuestions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <div className="flex gap-1.5">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="w-2 h-2 rounded-full bg-primary animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }}
+                />
+              ))}
+            </div>
+            <p className="text-sm text-muted-foreground">Scanning answer sheet…</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 max-w-3xl mx-auto pb-6">
+            {liveQuestions.map((q, idx) => {
+              const pct = q.maxMarks > 0 ? (q.aiScore / q.maxMarks) * 100 : 0;
+              const color = pct >= 80 ? 'text-positive' : pct >= 50 ? 'text-warning' : 'text-negative';
+              const barColor = pct >= 80 ? 'bg-positive' : pct >= 50 ? 'bg-warning' : 'bg-negative';
+              return (
+                <div
+                  key={q.id}
+                  className="flex items-center gap-3 p-3 bg-card border border-border rounded-xl animate-slide-in-bottom"
+                  style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}
+                >
+                  <div className="w-10 shrink-0 text-center">
+                    <span className="text-xs font-700 text-muted-foreground">Q.{q.qNo}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-foreground truncate">{q.questionText || '—'}</p>
+                    <div className="mt-1 h-1 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className={`text-sm font-700 ${color}`}>{q.aiScore}</span>
+                    <span className="text-xs text-muted-foreground">/{q.maxMarks}</span>
+                  </div>
+                  <div className="shrink-0 text-xs text-muted-foreground w-12 text-right">
+                    {q.aiConfidence}%
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+              <Loader2 size={11} className="text-primary animate-spin" />
+              Evaluating more questions…
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   // Done — show evaluation grid
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* Reset button overlay */}
-      <div className="absolute top-0 right-0 z-10 p-2">
-        <button
-          onClick={handleReset}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground bg-card border border-border px-3 py-1.5 rounded-lg hover:bg-muted transition-colors"
-        >
-          <RefreshCw size={12} />
-          New Evaluation
-        </button>
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Mobile panel tab bar */}
+      <div className="lg:hidden flex border-b border-border bg-card shrink-0">
+        {([
+          { id: 'student', label: 'Student' },
+          { id: 'questions', label: 'Questions' },
+          { id: 'score', label: 'Score' },
+        ] as { id: typeof mobilePanel; label: string }[]).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setMobilePanel(tab.id)}
+            className={`flex-1 py-2.5 text-xs font-600 border-b-2 transition-colors ${
+              mobilePanel === tab.id
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
-      <StudentInfoPanel
-        questions={questions}
-        activeSection={activeSection}
-        setActiveSection={setActiveSection}
-        sections={sections}
-        studentInfo={studentInfo}
-      />
-      <EvaluationGrid questions={filteredQuestions} updateQuestion={updateQuestion} />
-      <ScoreSummaryPanel
-        questions={questions}
-        paperTotalMarks={extractedPaper?.metadata.totalMarks}
-        evalId={evalId}
-        studentInfo={studentInfo}
-      />
+
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Reset button */}
+        <div className="absolute top-0 right-0 z-10 p-2">
+          <button
+            onClick={handleReset}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground bg-card border border-border px-3 py-1.5 rounded-lg hover:bg-muted transition-colors"
+          >
+            <RefreshCw size={12} />
+            <span className="hidden sm:inline">New Evaluation</span>
+          </button>
+        </div>
+
+        {/* Left: Student Info Panel */}
+        <div className={`lg:flex flex-col ${mobilePanel === 'student' ? 'flex flex-1' : 'hidden'}`}>
+          <StudentInfoPanel
+            questions={questions}
+            activeSection={activeSection}
+            setActiveSection={setActiveSection}
+            sections={sections}
+            studentInfo={studentInfo}
+            scannedImages={scannedImages}
+          />
+        </div>
+
+        {/* Middle: Questions Grid */}
+        <div className={`lg:flex flex-col flex-1 min-w-0 ${mobilePanel === 'questions' ? 'flex' : 'hidden'}`}>
+          <EvaluationGrid questions={filteredQuestions} updateQuestion={updateQuestion} />
+        </div>
+
+        {/* Right: Score Panel */}
+        <div className={`lg:flex flex-col ${mobilePanel === 'score' ? 'flex flex-1' : 'hidden'}`}>
+          <ScoreSummaryPanel
+            questions={questions}
+            paperTotalMarks={extractedPaper?.metadata.totalMarks}
+            evalId={evalId}
+            studentInfo={studentInfo}
+          />
+        </div>
+      </div>
     </div>
   );
 }

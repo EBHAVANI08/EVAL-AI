@@ -259,7 +259,7 @@ Return ONLY valid JSON (no markdown fences):
                 className="input-field text-sm resize-none"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-600 text-muted-foreground mb-1">Subject</label>
                 <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Biology" className="input-field text-sm py-2" />

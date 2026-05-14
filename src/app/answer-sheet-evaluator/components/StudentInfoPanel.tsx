@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { BookOpen, Calendar, Hash, Globe, CheckCircle2, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { BookOpen, Calendar, Hash, Globe, CheckCircle2, Clock, Camera, X, ZoomIn } from 'lucide-react';
 import type { QuestionEvaluation, StudentInfo } from './EvaluatorWorkspace';
 import StatusBadge from '@/components/ui/StatusBadge';
 
@@ -12,9 +12,11 @@ interface StudentInfoPanelProps {
   setActiveSection: (s: string) => void;
   sections: string[];
   studentInfo: StudentInfo;
+  scannedImages?: string[];
 }
 
-export default function StudentInfoPanel({ questions, activeSection, setActiveSection, sections, studentInfo }: StudentInfoPanelProps) {
+export default function StudentInfoPanel({ questions, activeSection, setActiveSection, sections, studentInfo, scannedImages = [] }: StudentInfoPanelProps) {
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const reviewed = questions.filter((q) => q.teacherScore !== null || q.status === 'reviewed').length;
   const flagged = questions.filter((q) => q.status === 'flagged').length;
   const progress = Math.round((reviewed / questions.length) * 100);
@@ -23,7 +25,7 @@ export default function StudentInfoPanel({ questions, activeSection, setActiveSe
     : '—';
 
   return (
-    <aside className="w-64 xl:w-72 shrink-0 border-r border-border bg-card overflow-y-auto scrollbar-thin">
+    <aside className="w-full lg:w-64 xl:w-72 lg:shrink-0 border-r border-border bg-card overflow-y-auto scrollbar-thin">
       {/* Student card */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-3 mb-3">
@@ -130,7 +132,72 @@ export default function StudentInfoPanel({ questions, activeSection, setActiveSe
             </div>
           </div>
         </div>
+
+        {/* Scanned pages (camera captures saved with evaluation) */}
+        {scannedImages.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Camera size={13} className="text-primary" />
+              <p className="text-xs font-600 text-muted-foreground uppercase tracking-wider">
+                Scanned Pages ({scannedImages.length})
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {scannedImages.map((src, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setLightboxIdx(idx)}
+                  className="relative group w-16 h-20 rounded-lg overflow-hidden border border-border hover:border-primary transition-colors"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={`Page ${idx + 1}`} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                    <ZoomIn size={14} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <span className="absolute bottom-0.5 right-1 text-xs font-700 text-white drop-shadow">{idx + 1}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Lightbox */}
+      {lightboxIdx !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setLightboxIdx(null)}
+        >
+          <div className="relative max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-white text-sm font-600">Page {lightboxIdx + 1} of {scannedImages.length}</span>
+              <button onClick={() => setLightboxIdx(null)} className="text-white hover:text-gray-300">
+                <X size={20} />
+              </button>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={scannedImages[lightboxIdx]} alt={`Page ${lightboxIdx + 1}`} className="w-full rounded-xl border border-border" />
+            {scannedImages.length > 1 && (
+              <div className="flex justify-center gap-3 mt-3">
+                <button
+                  disabled={lightboxIdx === 0}
+                  onClick={() => setLightboxIdx((i) => Math.max(0, (i ?? 0) - 1))}
+                  className="px-4 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm disabled:opacity-30 transition-colors"
+                >
+                  ← Prev
+                </button>
+                <button
+                  disabled={lightboxIdx === scannedImages.length - 1}
+                  onClick={() => setLightboxIdx((i) => Math.min(scannedImages.length - 1, (i ?? 0) + 1))}
+                  className="px-4 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm disabled:opacity-30 transition-colors"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

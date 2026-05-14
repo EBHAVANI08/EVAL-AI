@@ -123,13 +123,14 @@ export default function RecentEvaluationsTable() {
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search students, subjects..."
-              className="pl-8 pr-3 py-2 text-sm input-field w-52"
+              className="input-field w-36 sm:w-48 lg:w-52 text-sm"
+              style={{ paddingLeft: '2rem', paddingRight: '0.75rem', paddingTop: '0.5rem', paddingBottom: '0.5rem' }}
             />
           </div>
         </div>
@@ -157,10 +158,10 @@ export default function RecentEvaluationsTable() {
       )}
 
       <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full min-w-[700px]">
+        <table className="w-full min-w-[360px] sm:min-w-[600px]">
           <thead>
             <tr className="border-b border-border bg-muted/30">
-              <th className="w-10 px-4 py-3">
+              <th className="w-10 px-3 sm:px-4 py-3">
                 <input
                   type="checkbox"
                   className="w-3.5 h-3.5 accent-primary"
@@ -169,20 +170,20 @@ export default function RecentEvaluationsTable() {
                 />
               </th>
               {[
-                { key: 'studentName' as SortKey, label: 'Student' },
-                { key: null, label: 'Roll No' },
-                { key: 'subject' as SortKey, label: 'Subject' },
-                { key: null, label: 'Class' },
-                { key: 'obtained' as SortKey, label: 'Marks' },
-                { key: 'aiConfidence' as SortKey, label: 'AI Confidence' },
-                { key: null, label: 'Overrides' },
-                { key: null, label: 'Status' },
-                { key: 'submittedAt' as SortKey, label: 'Submitted' },
-                { key: null, label: '' },
+                { key: 'studentName' as SortKey, label: 'Student', hide: '' },
+                { key: null, label: 'Roll No', hide: 'hidden sm:table-cell' },
+                { key: 'subject' as SortKey, label: 'Subject', hide: '' },
+                { key: null, label: 'Class', hide: 'hidden sm:table-cell' },
+                { key: 'obtained' as SortKey, label: 'Marks', hide: '' },
+                { key: 'aiConfidence' as SortKey, label: 'Confidence', hide: 'hidden md:table-cell' },
+                { key: null, label: 'Overrides', hide: 'hidden lg:table-cell' },
+                { key: null, label: 'Status', hide: '' },
+                { key: 'submittedAt' as SortKey, label: 'Date', hide: 'hidden md:table-cell' },
+                { key: null, label: '', hide: '' },
               ].map((col, idx) => (
                 <th
                   key={`th-${idx}`}
-                  className={`px-3 py-3 text-left text-xs font-600 text-muted-foreground uppercase tracking-wider ${col.key ? 'cursor-pointer select-none hover:text-foreground' : ''}`}
+                  className={`px-2 sm:px-3 py-3 text-left text-xs font-600 text-muted-foreground uppercase tracking-wider ${col.key ? 'cursor-pointer select-none hover:text-foreground' : ''} ${col.hide}`}
                   onClick={col.key ? () => handleSort(col.key!) : undefined}
                 >
                   <div className="flex items-center gap-1">
@@ -213,7 +214,7 @@ export default function RecentEvaluationsTable() {
                   key={ev.id}
                   className={`border-b border-border last:border-0 transition-colors ${rowIdx % 2 === 0 ? 'bg-card' : 'bg-muted/20'} hover:bg-secondary/40 group`}
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-3 sm:px-4 py-3">
                     <input
                       type="checkbox"
                       className="w-3.5 h-3.5 accent-primary"
@@ -221,7 +222,7 @@ export default function RecentEvaluationsTable() {
                       onChange={() => toggleSelect(ev.id)}
                     />
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-2 sm:px-3 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center shrink-0">
                         <span className="text-xs font-700 text-primary">
@@ -231,15 +232,15 @@ export default function RecentEvaluationsTable() {
                       <span className="text-sm font-600 text-foreground whitespace-nowrap">{ev.studentName}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-3 text-sm text-muted-foreground font-tabular">{ev.rollNo}</td>
-                  <td className="px-3 py-3 text-sm text-foreground font-500">{ev.subject}</td>
-                  <td className="px-3 py-3 text-sm text-muted-foreground">{ev.class}</td>
-                  <td className="px-3 py-3">
+                  <td className="hidden sm:table-cell px-3 py-3 text-sm text-muted-foreground font-tabular">{ev.rollNo}</td>
+                  <td className="px-2 sm:px-3 py-3 text-sm text-foreground font-500">{ev.subject}</td>
+                  <td className="hidden sm:table-cell px-3 py-3 text-sm text-muted-foreground">{ev.class}</td>
+                  <td className="px-2 sm:px-3 py-3">
                     <span className="text-sm font-700 text-foreground font-tabular">
                       {ev.obtained !== null ? `${ev.obtained}/${ev.maxMarks}` : '—'}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="hidden md:table-cell px-3 py-3">
                     <div className="flex items-center gap-1.5">
                       <span className={`text-sm font-700 font-tabular ${getConfidenceColor(ev.aiConfidence)}`}>
                         {ev.aiConfidence !== null ? `${ev.aiConfidence}%` : '—'}
@@ -252,15 +253,15 @@ export default function RecentEvaluationsTable() {
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="hidden lg:table-cell px-3 py-3">
                     <span className={`text-sm font-tabular ${ev.overrides > 0 ? 'text-warning font-600' : 'text-muted-foreground'}`}>
                       {ev.overrides > 0 ? ev.overrides : '—'}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-2 sm:px-3 py-3">
                     <StatusBadge variant={ev.status} />
                   </td>
-                  <td className="px-3 py-3 text-xs text-muted-foreground whitespace-nowrap">{ev.submittedAt}</td>
+                  <td className="hidden md:table-cell px-3 py-3 text-xs text-muted-foreground whitespace-nowrap">{ev.submittedAt}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="tooltip-custom">

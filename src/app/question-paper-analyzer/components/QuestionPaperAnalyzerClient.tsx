@@ -2,12 +2,13 @@
 
 import React, { useState, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Upload, FileText, Loader2, CheckCircle2, AlertTriangle, ArrowRight, X, BookOpen, ScanLine } from 'lucide-react';
+import { ChevronLeft, Upload, FileText, Loader2, CheckCircle2, AlertTriangle, ArrowRight, X, BookOpen, ScanLine, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ExtractedQuestionsPanel from './ExtractedQuestionsPanel';
 import dynamic from 'next/dynamic';
 
 const ScannerCapture = dynamic(() => import('@/components/ui/ScannerCapture'), { ssr: false });
+const CameraScanner = dynamic(() => import('@/components/ui/CameraScanner'), { ssr: false });
 
 export interface ExtractedQuestion {
   qNo: string;
@@ -76,8 +77,9 @@ async function uploadPdfToGemini(file: File): Promise<{ fileUri: string; mimeTyp
 
 export default function QuestionPaperAnalyzerClient() {
   const [step, setStep] = useState<Step>('upload');
-  const [inputMode, setInputMode] = useState<'upload' | 'scan'>('upload');
+  const [inputMode, setInputMode] = useState<'upload' | 'scan' | 'camera'>('upload');
   const [file, setFile] = useState<File | null>(null);
+  const [cameraPages, setCameraPages] = useState<File[]>([]); // only files needed for analysis
   const [dragOver, setDragOver] = useState(false);
   const [extractedPaper, setExtractedPaper] = useState<ExtractedPaper | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -104,28 +106,24 @@ export default function QuestionPaperAnalyzerClient() {
     if (f) handleFile(f);
   };
 
-  const handleAnalyze = async () => {
-    if (!file) return;
-    setStep('analyzing');
-    setErrorMsg('');
-
-    try {
-      const isPdf = file.type === 'application/pdf';
-      let visionPayload: Record<string, string>;
-
+  // Analyze a single file and return structured paper data
+  const analyzeFile = async (f: File, visionPayload?: Record<string, string>): Promise<ExtractedPaper> => {
+    if (!visionPayload) {
+      const isPdf = f.type === 'application/pdf';
       if (isPdf) {
-        const { fileUri, mimeType } = await uploadPdfToGemini(file);
+        const { fileUri, mimeType } = await uploadPdfToGemini(f);
         visionPayload = { fileUri, mimeType };
       } else {
-        const dataUri = await compressImage(file);
+        const dataUri = await compressImage(f);
         const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);
         if (!match) throw new Error('Failed to process image for AI');
         visionPayload = { mimeType: match[1], base64Data: match[2] };
       }
+    }
 
-      const prompt = `You are an expert exam paper analyzer. Analyze this question paper and extract its complete structure.
+    const prompt = `You are an expert exam paper analyzer. Read this ENTIRE paper from the first page to the last page and extract every question from every section.
 
-Return ONLY a valid JSON object with this exact structure:
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "metadata": {
     "subject": "string",
@@ -133,95 +131,152 @@ Return ONLY a valid JSON object with this exact structure:
     "board": "string",
     "totalMarks": number,
     "duration": "string",
-    "sections": ["A", "B", ...],
+    "sections": ["A","B","C","D","E"],
     "sectionConstraints": {
       "B": { "attemptAny": 5, "totalQuestions": 8 }
     }
   },
   "questions": [
-    {
-      "qNo": "1",
-      "section": "A",
-      "questionText": "Full question text here",
-      "maxMarks": 2,
-      "type": "theory|numerical|diagram|mcq|short"
-    }
+    { "qNo": "1", "section": "A", "questionText": "...", "maxMarks": 1, "type": "mcq" }
   ]
 }
 
-Rules:
-- Extract EVERY question including sub-questions (1a, 1b, 2, etc.)
-- For MCQ, include all options in questionText
-- Detect question type: theory (long answer), numerical (calculation), diagram (draw/label), mcq (multiple choice), short (1-2 line answer)
-- If board/class/subject not mentioned, infer from content or use "Unknown"
-- IMPORTANT: For each section that says "Answer any X" or "Attempt any X", add it to sectionConstraints with attemptAny=X and totalQuestions=total in that section. Omit sections with no such constraint.
+STRICT RULES — follow every one:
+1. SCAN ALL SECTIONS: go through Section A, then B, then C, then D, then E (and any others). Do NOT stop after the first section.
+2. Every question from every section must appear in the "questions" array with the correct "section" value.
+3. Sub-parts: if a question has (a)(b)(c) or (i)(ii)(iii) parts, add each as a separate entry. Their maxMarks must sum to the parent total.
+4. Case studies (e.g. CBSE Sec E): each sub-part is a separate entry; divide parent marks equally if not stated.
+5. MCQ options: include all 4 options in questionText.
+6. questionText: max 150 characters — truncate long text but NEVER omit a question entirely.
+7. type must be one of: mcq | short | theory | numerical | diagram
+8. sectionConstraints: if a section says "Attempt any X of Y questions", set attemptAny=X and totalQuestions=Y.
+9. Return ONLY the JSON object. No markdown fences. No extra text.`;
 
-CASE STUDY MARKS RULE — CRITICAL:
-For case study questions (e.g., CBSE Section E Q36-Q38, each worth 4 marks total) that have sub-parts (i), (ii), (iii)(a), (iii)(b) etc.:
-- The stated total (e.g., 4 marks) is for the WHOLE question, not each sub-part
-- YOU MUST divide marks among sub-parts. Example: Q36 = 4 marks with 4 sub-parts → each sub-part maxMarks = 1
-- If mark per sub-part is stated explicitly on the paper, use that
-- VERIFY: sum of all sub-part maxMarks must equal the parent question's total
-- Same rule applies to any question split into (a), (b), (c) parts
+    const response = await fetch('/api/ai/gemini-vision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...visionPayload, prompt }),
+    });
 
-- Strip trailing commas before closing brackets in your JSON
-- KEEP OUTPUT SHORT to avoid truncation: truncate questionText to 150 chars maximum
-- Return ONLY the JSON object, no markdown, no explanation`;
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(err.error || `Gemini request failed: ${response.status}`);
+    }
 
-      const response = await fetch('/api/ai/gemini-vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...visionPayload, prompt }),
-      });
+    const { text: raw, finishReason } = await response.json();
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        throw new Error(err.error || `Gemini request failed: ${response.status}`);
-      }
+    const start = raw.indexOf('{');
+    if (start === -1) throw new Error(`No JSON found in AI response. Raw (first 300 chars): ${raw.slice(0, 300)}`);
 
-      const { text: raw } = await response.json();
+    let parsed: ExtractedPaper | null = null;
 
-      // Extract JSON — with recovery for truncated responses
-      const start = raw.indexOf('{');
-      if (start === -1) throw new Error(`No JSON found in AI response. Raw (first 300 chars): ${raw.slice(0, 300)}`);
+    const fullEnd = raw.lastIndexOf('}');
+    if (fullEnd > start) {
+      try {
+        const cleaned = raw.slice(start, fullEnd + 1).replace(/,\s*([}\]])/g, '$1');
+        const attempt = JSON.parse(cleaned);
+        if (attempt.questions && Array.isArray(attempt.questions) && attempt.questions.length > 0) {
+          parsed = attempt;
+        }
+      } catch { /* fall through */ }
+    }
 
-      let parsed: ExtractedPaper | null = null;
-
-      // Try full object first
-      const fullEnd = raw.lastIndexOf('}');
-      if (fullEnd > start) {
+    if (!parsed) {
+      const partial = raw.slice(start);
+      const lastQ = partial.lastIndexOf('},');
+      if (lastQ > 0) {
         try {
-          const cleaned = raw.slice(start, fullEnd + 1).replace(/,\s*([}\]])/g, '$1');
-          const attempt = JSON.parse(cleaned);
+          const salvaged = (partial.slice(0, lastQ + 1) + ']}').replace(/,\s*([}\]])/g, '$1');
+          const attempt = JSON.parse(salvaged);
           if (attempt.questions && Array.isArray(attempt.questions) && attempt.questions.length > 0) {
             parsed = attempt;
           }
-        } catch { /* fall through to recovery */ }
+        } catch { /* ignore */ }
       }
+    }
 
-      // Recovery: truncated mid-string — close the questions array and object
-      if (!parsed) {
-        const partial = raw.slice(start);
-        const lastQ = partial.lastIndexOf('},');
-        if (lastQ > 0) {
-          try {
-            const salvaged = (partial.slice(0, lastQ + 1) + ']}').replace(/,\s*([}\]])/g, '$1');
-            const attempt = JSON.parse(salvaged);
-            if (attempt.questions && Array.isArray(attempt.questions) && attempt.questions.length > 0) {
-              parsed = attempt;
-              toast.error(`Response was truncated — recovered ${attempt.questions.length} questions. Some may be missing.`);
-            }
-          } catch { /* ignore */ }
+    if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+      throw new Error('Could not extract questions from AI response. Try uploading a clearer image or fewer pages.');
+    }
+
+    if (finishReason === 'MAX_TOKENS') {
+      toast.error('AI response was cut off — running section-by-section recovery...');
+    }
+
+    // Multi-pass: fill missing sections
+    const emptySections = (parsed.metadata.sections || []).filter(
+      (sec) => !parsed!.questions.some((q) => q.section === sec)
+    );
+
+    if (emptySections.length > 0) {
+      toast.loading(`Extracting missing sections: ${emptySections.join(', ')}…`, { id: 'section-refetch' });
+      for (const sec of emptySections) {
+        try {
+          const sectionPrompt = `Extract ONLY the questions from Section ${sec} of this exam paper.
+
+Return ONLY a valid JSON array (no markdown):
+[
+  { "qNo": "19", "section": "${sec}", "questionText": "...(max 150 chars)", "maxMarks": 2, "type": "short" }
+]
+
+Rules:
+- Section ${sec} questions only — include all of them
+- Sub-parts (a)(b)(c) or (i)(ii)(iii) = separate entries with marks divided
+- questionText: max 150 chars
+- type: mcq | short | theory | numerical | diagram
+- Return ONLY the JSON array`;
+
+          const secRes = await fetch('/api/ai/gemini-vision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...visionPayload, prompt: sectionPrompt }),
+          });
+          if (!secRes.ok) continue;
+          const { text: secRaw } = await secRes.json();
+          const arrStart = secRaw.indexOf('[');
+          const arrEnd = secRaw.lastIndexOf(']');
+          if (arrStart === -1 || arrEnd === -1) continue;
+          const secQuestions = JSON.parse(secRaw.slice(arrStart, arrEnd + 1).replace(/,\s*([}\]])/g, '$1'));
+          if (Array.isArray(secQuestions) && secQuestions.length > 0) {
+            parsed.questions.push(...secQuestions);
+          }
+        } catch { /* skip */ }
+      }
+      toast.dismiss('section-refetch');
+    }
+
+    return parsed;
+  };
+
+  const handleAnalyze = async () => {
+    const filesToProcess = inputMode === 'camera' ? cameraPages : file ? [file] : [];
+    if (filesToProcess.length === 0) return;
+    setStep('analyzing');
+    setErrorMsg('');
+
+    try {
+      let merged: ExtractedPaper | null = null;
+
+      for (let i = 0; i < filesToProcess.length; i++) {
+        if (filesToProcess.length > 1) {
+          toast.loading(`Analyzing page ${i + 1} of ${filesToProcess.length}…`, { id: 'page-progress' });
+        }
+        const result = await analyzeFile(filesToProcess[i]);
+
+        if (!merged) {
+          merged = result;
+        } else {
+          // Merge additional pages: keep metadata from first page, append questions
+          merged.questions.push(...result.questions);
         }
       }
 
-      if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
-        throw new Error('Could not extract questions from AI response. Try uploading a clearer image or fewer pages.');
-      }
+      if (filesToProcess.length > 1) toast.dismiss('page-progress');
+      if (!merged) throw new Error('No data extracted');
 
-      setExtractedPaper(parsed);
+      setExtractedPaper(merged);
       setStep('done');
-      toast.success(`Extracted ${parsed.questions.length} questions successfully!`);
+      toast.success(`Extracted ${merged.questions.length} questions successfully!`);
     } catch (err: any) {
       const msg: string = err?.message || 'Failed to analyze question paper';
       setErrorMsg(msg);
@@ -239,6 +294,7 @@ For case study questions (e.g., CBSE Section E Q36-Q38, each worth 4 marks total
   const handleReset = () => {
     setStep('upload');
     setFile(null);
+    setCameraPages([]);
     setExtractedPaper(null);
     setErrorMsg('');
   };
@@ -296,7 +352,7 @@ For case study questions (e.g., CBSE Section E Q36-Q38, each worth 4 marks total
             {/* Input mode tabs */}
             <div className="flex gap-1 p-1 bg-muted rounded-xl mb-6">
               <button
-                onClick={() => { setInputMode('upload'); setFile(null); }}
+                onClick={() => { setInputMode('upload'); setFile(null); setCameraPages([]); }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-600 transition-colors ${
                   inputMode === 'upload' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
@@ -305,13 +361,22 @@ For case study questions (e.g., CBSE Section E Q36-Q38, each worth 4 marks total
                 Upload File
               </button>
               <button
-                onClick={() => { setInputMode('scan'); setFile(null); }}
+                onClick={() => { setInputMode('camera'); setFile(null); setCameraPages([]); }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-600 transition-colors ${
+                  inputMode === 'camera' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Camera size={15} />
+                Camera Scan
+              </button>
+              <button
+                onClick={() => { setInputMode('scan'); setFile(null); setCameraPages([]); }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-600 transition-colors ${
                   inputMode === 'scan' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <ScanLine size={15} />
-                Import Scanned Pages
+                Import Files
               </button>
             </div>
 
@@ -384,12 +449,41 @@ For case study questions (e.g., CBSE Section E Q36-Q38, each worth 4 marks total
               </>
             )}
 
+            {/* Camera mode */}
+            {inputMode === 'camera' && (
+              <>
+                <CameraScanner
+                  confirmLabel="Use These Pages for Analysis"
+                  onCapture={(pages) => {
+                    setCameraPages(pages.map((p) => p.file));
+                    toast.success(`${pages.length} page${pages.length > 1 ? 's' : ''} captured — click Analyze below`);
+                  }}
+                />
+                {cameraPages.length > 0 && (
+                  <>
+                    {step === 'error' && (
+                      <div className="mt-4 flex items-start gap-2 p-4 bg-negative-bg rounded-lg text-sm text-red-700">
+                        <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                        <span>{errorMsg}</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleAnalyze}
+                      className="mt-4 w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-600 py-3 rounded-xl hover:bg-primary/90 transition-colors text-sm"
+                    >
+                      <BookOpen size={18} />
+                      Analyze {cameraPages.length} Camera Page{cameraPages.length > 1 ? 's' : ''} with AI
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+
             {/* Scan mode */}
             {inputMode === 'scan' && (
               <ScannerCapture
                 confirmLabel="Analyze Scanned Paper with AI"
                 onCapture={(scannedPages) => {
-                  // Use the first scanned page as the file; multi-page handled by the evaluator
                   setFile(scannedPages[0]);
                   setInputMode('upload');
                   toast.success(`${scannedPages.length} page${scannedPages.length > 1 ? 's' : ''} scanned — ready to analyze`);

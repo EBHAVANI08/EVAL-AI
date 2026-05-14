@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, XCircle, MinusCircle, ScanLine, Globe, Brain, MessageSquare, Lightbulb, PenLine, ListChecks, Zap, GitMerge } from 'lucide-react';
 import type { QuestionEvaluation, KeyPoint } from './EvaluatorWorkspace';
 
@@ -187,13 +188,13 @@ function QuestionRow({ q, updateQuestion }: { q: QuestionEvaluation; updateQuest
     }`}>
       {/* ── Compact header row ── */}
       <div
-        className="flex items-center gap-3 px-5 py-3 cursor-pointer select-none"
+        className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3 cursor-pointer select-none"
         onClick={() => setExpanded(!expanded)}
       >
         <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`} />
 
         {/* Q label */}
-        <div className="w-14 shrink-0">
+        <div className="w-12 sm:w-14 shrink-0">
           <p className="text-xs font-700 text-foreground leading-none">Q.{q.qNo}</p>
           <p className="text-xs text-muted-foreground mt-0.5">§{q.section}</p>
         </div>
@@ -219,23 +220,23 @@ function QuestionRow({ q, updateQuestion }: { q: QuestionEvaluation; updateQuest
         </div>
 
         {/* AI score */}
-        <div className="shrink-0 text-center w-20">
+        <div className="shrink-0 text-center w-16 sm:w-20">
           <p className="text-xs text-muted-foreground mb-0.5">AI Score</p>
           <p className={`text-sm font-700 font-tabular ${isOverridden ? 'line-through text-muted-foreground/50' : ''}`}>
             {q.aiScore}/{q.maxMarks}
           </p>
         </div>
 
-        {/* Confidence + Semantic */}
-        <div className="shrink-0 w-20 flex flex-col items-center gap-0.5">
+        {/* Confidence + Semantic — hidden on mobile */}
+        <div className="hidden md:flex shrink-0 w-20 flex-col items-center gap-0.5">
           {!isUnattempted && <ConfidencePill value={q.aiConfidence} />}
           {!isUnattempted && (
             <span className="text-xs text-muted-foreground font-tabular">~{q.semanticSimilarity}% sim</span>
           )}
         </div>
 
-        {/* Teacher override */}
-        <div className="shrink-0 w-28" onClick={(e) => e.stopPropagation()}>
+        {/* Teacher override — hidden on mobile */}
+        <div className="hidden sm:block shrink-0 w-24 md:w-28" onClick={(e) => e.stopPropagation()}>
           <p className="text-xs text-muted-foreground mb-0.5">Your Score</p>
           <div className="flex items-center gap-1">
             <input
@@ -255,7 +256,7 @@ function QuestionRow({ q, updateQuestion }: { q: QuestionEvaluation; updateQuest
         </div>
 
         {/* Hybrid / Final */}
-        <div className="shrink-0 w-16 text-center">
+        <div className="shrink-0 w-14 sm:w-16 text-center">
           <p className="text-xs text-muted-foreground mb-0.5">{isOverridden ? 'Final' : 'Hybrid'}</p>
           <ScoreBadge score={effectiveScore} max={q.maxMarks} overridden={isOverridden} />
         </div>
@@ -269,7 +270,16 @@ function QuestionRow({ q, updateQuestion }: { q: QuestionEvaluation; updateQuest
       </div>
 
       {/* ── Expanded detail ── */}
+      <AnimatePresence initial={false}>
       {expanded && (
+        <motion.div
+          key="detail"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          style={{ overflow: 'hidden' }}
+        >
         <div className="border-t border-border/50 px-5 pb-5 pt-4 space-y-4">
 
           {/* Row 1: AI Ideal Answer | Student's Written Answer */}
@@ -361,7 +371,9 @@ function QuestionRow({ q, updateQuestion }: { q: QuestionEvaluation; updateQuest
             </div>
           </div>
         </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -374,39 +386,39 @@ export default function EvaluationGrid({ questions, updateQuestion }: Evaluation
 
       {/* Flagged alert banner */}
       {flagged.length > 0 && (
-        <div className="mx-5 mt-4 bg-warning-bg border border-warning/30 rounded-xl px-4 py-3 flex items-start gap-3">
-          <AlertTriangle size={16} className="text-warning mt-0.5 shrink-0" />
+        <div className="mx-4 mt-4 bg-warning-bg border border-warning/25 rounded-xl px-4 py-3 flex items-start gap-3">
+          <AlertTriangle size={15} className="text-warning mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-700 text-amber-800">
-              {flagged.length} question{flagged.length > 1 ? 's' : ''} flagged for your review
+              {flagged.length} question{flagged.length > 1 ? 's' : ''} flagged for review
             </p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              Q.{flagged.map((q) => q.qNo).join(', Q.')} — low AI confidence or diagram detected. Please verify scores before finalizing.
+            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+              Q.{flagged.map((q) => q.qNo).join(', Q.')} — low confidence or diagram detected. Verify before finalizing.
             </p>
           </div>
         </div>
       )}
 
       {/* Column headers */}
-      <div className="flex items-center gap-3 px-5 py-2 mt-4 bg-muted/40 border-y border-border sticky top-0 z-10">
+      <div className="flex items-center gap-2 px-3 sm:px-5 py-2.5 mt-4 bg-muted/60 border-y border-border sticky top-0 z-10 backdrop-blur-sm">
         <div className="w-2 shrink-0" />
-        <div className="w-14 shrink-0">
-          <span className="text-xs font-600 text-muted-foreground uppercase tracking-wider">Q No.</span>
+        <div className="w-12 sm:w-14 shrink-0">
+          <span className="panel-section-label">Q No.</span>
         </div>
         <div className="flex-1">
-          <span className="text-xs font-600 text-muted-foreground uppercase tracking-wider">Question</span>
+          <span className="panel-section-label">Question</span>
         </div>
-        <div className="w-20 shrink-0 text-center">
-          <span className="text-xs font-600 text-muted-foreground uppercase tracking-wider">AI Score</span>
+        <div className="w-16 sm:w-20 shrink-0 text-center">
+          <span className="panel-section-label">AI Score</span>
         </div>
-        <div className="w-20 shrink-0 text-center">
-          <span className="text-xs font-600 text-muted-foreground uppercase tracking-wider">Confidence</span>
+        <div className="hidden md:block w-20 shrink-0 text-center">
+          <span className="panel-section-label">Confidence</span>
         </div>
-        <div className="w-28 shrink-0">
-          <span className="text-xs font-600 text-muted-foreground uppercase tracking-wider">Override</span>
+        <div className="hidden sm:block w-24 md:w-28 shrink-0">
+          <span className="panel-section-label">Override</span>
         </div>
-        <div className="w-16 shrink-0 text-center">
-          <span className="text-xs font-600 text-muted-foreground uppercase tracking-wider">Final</span>
+        <div className="w-14 sm:w-16 shrink-0 text-center">
+          <span className="panel-section-label">Final</span>
         </div>
         <div className="w-7 shrink-0" />
       </div>
@@ -419,10 +431,12 @@ export default function EvaluationGrid({ questions, updateQuestion }: Evaluation
       </div>
 
       {questions.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center px-8">
-          <CheckCircle2 size={40} className="text-muted-foreground/30 mb-4" />
-          <p className="text-base font-600 text-muted-foreground">No questions in this section</p>
-          <p className="text-sm text-muted-foreground/70 mt-1">Select a different section from the left panel</p>
+        <div className="flex flex-col items-center justify-center py-24 text-center px-8">
+          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+            <CheckCircle2 size={26} className="text-muted-foreground/40" />
+          </div>
+          <p className="text-sm font-600 text-muted-foreground">No questions in this section</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Select a different section from the left panel</p>
         </div>
       )}
     </div>

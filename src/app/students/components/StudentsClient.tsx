@@ -232,12 +232,21 @@ export default function StudentsClient() {
 
         {/* Table */}
         <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[700px]">
+          <table className="w-full min-w-[360px] sm:min-w-[600px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {['Student', 'Roll No', 'Class', 'Evaluations', 'Avg Score', 'AI Confidence', 'Last Evaluated', ''].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-600 text-muted-foreground uppercase tracking-wider">
-                    {h}
+                {[
+                  { label: 'Student', hide: '' },
+                  { label: 'Roll No', hide: 'hidden sm:table-cell' },
+                  { label: 'Class', hide: 'hidden sm:table-cell' },
+                  { label: 'Evaluations', hide: '' },
+                  { label: 'Avg Score', hide: '' },
+                  { label: 'AI Confidence', hide: 'hidden md:table-cell' },
+                  { label: 'Last Evaluated', hide: 'hidden lg:table-cell' },
+                  { label: '', hide: '' },
+                ].map((h) => (
+                  <th key={h.label} className={`px-4 py-3 text-left text-xs font-600 text-muted-foreground uppercase tracking-wider ${h.hide}`}>
+                    {h.label}
                   </th>
                 ))}
               </tr>
@@ -275,20 +284,20 @@ export default function StudentsClient() {
                           <span className="text-sm font-600 text-foreground">{st.name || '—'}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground font-tabular">{st.rollNo || '—'}</td>
-                      <td className="px-4 py-3 text-sm text-foreground">{st.class || '—'}</td>
+                      <td className="hidden sm:table-cell px-4 py-3 text-sm text-muted-foreground font-tabular">{st.rollNo || '—'}</td>
+                      <td className="hidden sm:table-cell px-4 py-3 text-sm text-foreground">{st.class || '—'}</td>
                       <td className="px-4 py-3 text-sm font-tabular text-foreground">{st.evalCount}</td>
                       <td className="px-4 py-3">
                         <span className={`text-sm font-700 font-tabular ${scoreColor(st.avgScore)}`}>
                           {st.avgScore !== null ? `${st.avgScore}%` : '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="hidden md:table-cell px-4 py-3">
                         <span className={`text-sm font-700 font-tabular ${st.avgConfidence !== null && st.avgConfidence >= 85 ? 'text-positive' : st.avgConfidence !== null && st.avgConfidence >= 70 ? 'text-warning' : st.avgConfidence !== null ? 'text-negative' : 'text-muted-foreground'}`}>
                           {st.avgConfidence !== null ? `${st.avgConfidence}%` : '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      <td className="hidden lg:table-cell px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                         {st.lastEvaluated ? new Date(st.lastEvaluated).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                       </td>
                       <td className="px-4 py-3">

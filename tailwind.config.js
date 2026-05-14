@@ -55,16 +55,29 @@ module.exports = {
       fontFamily: {
         sans: ['var(--font-plus-jakarta-sans)', 'sans-serif'],
       },
+      fontWeight: {
+        '500': '500',
+        '600': '600',
+        '700': '700',
+        '800': '800',
+      },
       boxShadow: {
         card: '0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(79,70,229,0.05)',
         'card-hover': '0 4px 24px rgba(79,70,229,0.10)',
         modal: '0 20px 60px rgba(0,0,0,0.15)',
         dropdown: '0 8px 24px rgba(0,0,0,0.10)',
       },
+      keyframes: {
+        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+        slideUp: { from: { transform: 'translateY(8px)', opacity: '0' }, to: { transform: 'translateY(0)', opacity: '1' } },
+        scaleIn: { from: { transform: 'scale(0.95)', opacity: '0' }, to: { transform: 'scale(1)', opacity: '1' } },
+        slideInBottom: { from: { transform: 'translateY(12px)', opacity: '0' }, to: { transform: 'translateY(0)', opacity: '1' } },
+      },
       animation: {
         'fade-in': 'fadeIn 200ms ease-out',
         'slide-up': 'slideUp 250ms ease-out',
         'scale-in': 'scaleIn 150ms ease-out',
+        'slide-in-bottom': 'slideInBottom 300ms ease-out both',
       },
     },
   },

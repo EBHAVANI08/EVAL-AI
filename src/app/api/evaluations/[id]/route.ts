@@ -71,6 +71,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       paperInfo: doc.paperInfo || {},
       questions: doc.questions || [],
       trainingData: doc.trainingData || {},
+      scannedImages: doc.scannedImages || [],
       createdAt: doc.createdAt,
       finalizedAt: doc.finalizedAt || null,
     });

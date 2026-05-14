@@ -54,7 +54,7 @@ function buildTrainingData(questions: any[]) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { studentInfo, paperInfo, questions } = body;
+    const { studentInfo, paperInfo, questions, scannedImages } = body;
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       return NextResponse.json({ error: 'questions array is required' }, { status: 400 });
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     const db = await getDb();
     const now = new Date();
 
-    const doc = {
+    const doc: Record<string, any> = {
       status: 'draft',
       createdAt: now,
       updatedAt: now,
@@ -72,6 +72,10 @@ export async function POST(request: NextRequest) {
       questions,
       trainingData: buildTrainingData(questions),
     };
+
+    if (Array.isArray(scannedImages) && scannedImages.length > 0) {
+      doc.scannedImages = scannedImages;
+    }
 
     const result = await db.collection('evaluations').insertOne(doc);
     return NextResponse.json({ id: result.insertedId.toString() }, { status: 201 });

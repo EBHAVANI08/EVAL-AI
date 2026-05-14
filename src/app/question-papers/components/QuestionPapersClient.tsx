@@ -367,8 +367,8 @@ Return ONLY valid JSON (no markdown fences):
               </div>
 
               {/* Metadata */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-600 text-muted-foreground mb-1">Title (optional)</label>
                   <input type="text" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} placeholder="e.g. Class 10 Science Mid-Term 2025" className="input-field text-sm py-2" />
                 </div>

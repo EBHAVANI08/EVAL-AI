@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Download, CheckCircle2, Save, AlertTriangle, FileText, BarChart2 } from 'lucide-react';
+import { Download, CheckCircle2, Save, AlertTriangle, BarChart2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { QuestionEvaluation, StudentInfo } from './EvaluatorWorkspace';
@@ -23,36 +23,36 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
   const [isSaving, setIsSaving] = useState(false);
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
 
-  const totalMax = questions.reduce((a, q) => a + q.maxMarks, 0);
-  const displayMax = paperTotalMarks ?? totalMax;
+  const totalMax     = questions.reduce((a, q) => a + q.maxMarks, 0);
+  const displayMax   = paperTotalMarks ?? totalMax;
   const totalObtained = questions.reduce((a, q) => {
     const score = q.teacherScore !== null ? q.teacherScore : q.aiScore;
     return a + score;
   }, 0);
-  const percentage = displayMax > 0 ? Math.round((totalObtained / displayMax) * 100) : 0;
+  const percentage    = displayMax > 0 ? Math.round((totalObtained / displayMax) * 100) : 0;
   const overrideCount = questions.filter((q) => q.teacherScore !== null).length;
-  const flaggedCount = questions.filter((q) => q.status === 'flagged').length;
+  const flaggedCount  = questions.filter((q) => q.status === 'flagged').length;
   const reviewedCount = questions.filter((q) => q.teacherScore !== null || q.status === 'reviewed').length;
-  const avgConfidence = Math.round(questions.reduce((a, q) => a + q.aiConfidence, 0) / questions.length);
+  const avgConfidence = questions.length > 0
+    ? Math.round(questions.reduce((a, q) => a + q.aiConfidence, 0) / questions.length)
+    : 0;
 
   const gradeLabel = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C' : percentage >= 40 ? 'D' : 'F';
   const gradeColor = percentage >= 70 ? 'text-positive' : percentage >= 50 ? 'text-warning' : 'text-negative';
+  const barColor   = percentage >= 70 ? 'bg-positive' : percentage >= 50 ? 'bg-warning' : 'bg-negative';
 
   const sectionBreakdown = Array.from(new Set(questions.map((q) => q.section))).map((sec) => {
-    const secQs = questions.filter((q) => q.section === sec);
-    const secMax = secQs.reduce((a, q) => a + q.maxMarks, 0);
+    const secQs       = questions.filter((q) => q.section === sec);
+    const secMax      = secQs.reduce((a, q) => a + q.maxMarks, 0);
     const secObtained = secQs.reduce((a, q) => {
       const score = q.teacherScore !== null ? q.teacherScore : q.aiScore;
       return a + score;
     }, 0);
-    return { section: sec, obtained: secObtained, max: secMax, pct: Math.round((secObtained / secMax) * 100) };
+    return { section: sec, obtained: secObtained, max: secMax, pct: secMax > 0 ? Math.round((secObtained / secMax) * 100) : 0 };
   });
 
   const handleSaveDraft = async () => {
-    if (!evalId) {
-      toast.error('No evaluation ID — please wait for auto-save to complete first.');
-      return;
-    }
+    if (!evalId) { toast.error('No evaluation ID — wait for auto-save to finish.'); return; }
     setIsSaving(true);
     try {
       const res = await fetch(`/api/evaluations/${evalId}`, {
@@ -64,7 +64,7 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
         const err = await res.json().catch(() => ({ error: 'Save failed' }));
         throw new Error(err.error);
       }
-      toast.success('Draft saved — teacher scores and comments preserved');
+      toast.success('Draft saved — teacher scores preserved');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save draft');
     } finally {
@@ -74,10 +74,7 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
 
   const handleFinalize = async () => {
     setShowFinalizeModal(false);
-    if (!evalId) {
-      toast.error('No evaluation ID — cannot finalize.');
-      return;
-    }
+    if (!evalId) { toast.error('No evaluation ID — cannot finalize.'); return; }
     try {
       const res = await fetch(`/api/evaluations/${evalId}/finalize`, {
         method: 'POST',
@@ -88,33 +85,27 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
         const err = await res.json().catch(() => ({ error: 'Finalize failed' }));
         throw new Error(err.error);
       }
-      toast.success('Evaluation finalized! Scores are now locked in the database.');
+      toast.success('Evaluation finalized — scores are locked.');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to finalize evaluation');
+      toast.error(err.message || 'Failed to finalize');
     }
   };
 
   const handleExport = () => {
-    // Build a simple CSV export of the evaluation
     const rows = [
       ['Q No', 'Section', 'Question', 'OCR Text', 'AI Score', 'Teacher Score', 'Max Marks', 'AI Confidence', 'Status', 'Comment'],
       ...questions.map((q) => [
-        q.qNo,
-        q.section,
+        q.qNo, q.section,
         `"${q.questionText.replace(/"/g, '""')}"`,
         `"${q.ocrText.replace(/"/g, '""')}"`,
-        q.aiScore,
-        q.teacherScore ?? '',
-        q.maxMarks,
-        q.aiConfidence,
-        q.status,
+        q.aiScore, q.teacherScore ?? '', q.maxMarks, q.aiConfidence, q.status,
         `"${q.comment.replace(/"/g, '""')}"`,
       ]),
     ];
-    const csv = rows.map((r) => r.join(',')).join('\n');
+    const csv  = rows.map((r) => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url;
     a.download = `evaluation_${studentInfo.name || 'student'}_${studentInfo.rollNo || 'unknown'}.csv`;
     a.click();
@@ -124,135 +115,121 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
 
   return (
     <>
-      <aside className="w-64 xl:w-72 shrink-0 border-l border-border bg-card overflow-y-auto scrollbar-thin">
-        {/* Score hero */}
+      <aside className="w-full lg:w-64 xl:w-72 lg:shrink-0 border-l border-border bg-card overflow-y-auto scrollbar-thin flex flex-col">
+
+        {/* ── Score hero ───────────────────────────────────────── */}
         <div className="p-5 border-b border-border">
-          <p className="metric-label mb-3">Running Score</p>
-          <div className="flex items-end gap-3 mb-3">
+          <p className="panel-section-label mb-3">Running Score</p>
+          <div className="flex items-baseline gap-2 mb-1">
             <span className="metric-hero text-foreground font-tabular">{totalObtained}</span>
-            <span className="text-lg text-muted-foreground font-500 mb-1">/ {displayMax}</span>
-            <span className={`text-2xl font-bold mb-0.5 ${gradeColor}`}>{gradeLabel}</span>
+            <span className="text-base text-muted-foreground font-500">/ {displayMax}</span>
+            <span className={`text-xl font-700 ml-auto ${gradeColor}`}>{gradeLabel}</span>
           </div>
-          <div className="w-full h-3 bg-muted rounded-full overflow-hidden mb-2">
+          <div className="w-full h-2 bg-muted rounded-full overflow-hidden mt-3 mb-2">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${percentage >= 70 ? 'bg-positive' : percentage >= 50 ? 'bg-warning' : 'bg-negative'}`}
+              className={`h-full rounded-full transition-all duration-700 ${barColor}`}
               style={{ width: `${Math.min(percentage, 100)}%` }}
             />
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between items-center">
             <span className="text-xs text-muted-foreground">{percentage}% scored</span>
-            <span className="text-xs text-muted-foreground">{displayMax - totalObtained} marks dropped</span>
+            <span className="text-xs text-muted-foreground">{displayMax - totalObtained} dropped</span>
           </div>
           {evalId && (
-            <p className="text-xs text-positive mt-2 flex items-center gap-1">
-              <CheckCircle2 size={10} /> Saved to database
+            <p className="text-xs text-positive mt-2.5 flex items-center gap-1 font-500">
+              <CheckCircle2 size={11} /> Auto-saved to database
             </p>
           )}
         </div>
 
-        {/* Quick stats */}
-        <div className="p-4 border-b border-border grid grid-cols-2 gap-3">
+        {/* ── Quick stats ──────────────────────────────────────── */}
+        <div className="p-4 border-b border-border grid grid-cols-2 gap-2.5">
           {[
-            { label: 'Reviewed', value: `${reviewedCount}/${questions.length}`, color: 'text-positive' },
-            { label: 'Overridden', value: overrideCount, color: overrideCount > 0 ? 'text-primary' : 'text-muted-foreground' },
-            { label: 'Flagged', value: flaggedCount, color: flaggedCount > 0 ? 'text-warning' : 'text-muted-foreground' },
-            { label: 'Avg Confidence', value: `${avgConfidence}%`, color: avgConfidence >= 85 ? 'text-positive' : avgConfidence >= 70 ? 'text-warning' : 'text-negative' },
+            { label: 'Reviewed',      value: `${reviewedCount}/${questions.length}`, color: 'text-positive' },
+            { label: 'Overridden',    value: overrideCount,   color: overrideCount > 0 ? 'text-primary' : 'text-muted-foreground' },
+            { label: 'Flagged',       value: flaggedCount,    color: flaggedCount > 0  ? 'text-warning' : 'text-muted-foreground' },
+            { label: 'Avg Confidence',value: `${avgConfidence}%`, color: avgConfidence >= 85 ? 'text-positive' : avgConfidence >= 70 ? 'text-warning' : 'text-negative' },
           ].map((stat) => (
-            <div key={`stat-${stat.label}`} className="bg-muted/50 rounded-xl p-3 text-center">
+            <div key={stat.label} className="bg-muted/50 rounded-xl p-3 text-center border border-border/40">
               <p className={`text-base font-700 font-tabular ${stat.color}`}>{stat.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 font-500">{stat.label}</p>
             </div>
           ))}
         </div>
 
-        {/* Section breakdown */}
-        <div className="p-4 border-b border-border">
+        {/* ── Section breakdown ────────────────────────────────── */}
+        <div className="p-5 border-b border-border">
           <div className="flex items-center gap-2 mb-3">
-            <BarChart2 size={14} className="text-muted-foreground" />
-            <p className="text-xs font-700 text-muted-foreground uppercase tracking-wider">Section Breakdown</p>
+            <BarChart2 size={13} className="text-muted-foreground" />
+            <p className="panel-section-label">Section Breakdown</p>
           </div>
           <div className="space-y-3">
-            {sectionBreakdown.map((sec) => (
-              <div key={`sec-breakdown-${sec.section}`}>
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-600 text-foreground">Section {sec.section}</span>
-                  <span className="text-xs font-700 text-foreground font-tabular">{sec.obtained}/{sec.max}</span>
+            {sectionBreakdown.map((sec) => {
+              const secColor = sec.pct >= 70 ? 'bg-positive' : sec.pct >= 50 ? 'bg-warning' : 'bg-negative';
+              return (
+                <div key={sec.section}>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-xs font-600 text-foreground">Section {sec.section}</span>
+                    <span className="text-xs font-700 text-foreground font-tabular">{sec.obtained}/{sec.max}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-500 ${secColor}`} style={{ width: `${sec.pct}%` }} />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5 text-right">{sec.pct}%</p>
                 </div>
-                <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${sec.pct >= 70 ? 'bg-positive' : sec.pct >= 50 ? 'bg-warning' : 'bg-negative'}`}
-                    style={{ width: `${sec.pct}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5 text-right">{sec.pct}%</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Confidence chart */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2 mb-3">
-            <FileText size={14} className="text-muted-foreground" />
-            <p className="text-xs font-700 text-muted-foreground uppercase tracking-wider">AI Confidence by Q</p>
-          </div>
+        {/* ── Confidence chart ─────────────────────────────────── */}
+        <div className="p-5 border-b border-border">
+          <p className="panel-section-label mb-3">AI Confidence by Question</p>
           <SubjectBreakdownChart questions={questions} />
         </div>
 
-        {/* Flags / warnings */}
+        {/* ── Flags / warnings ─────────────────────────────────── */}
         {flaggedCount > 0 && (
-          <div className="mx-4 mb-4 bg-warning-bg border border-warning/30 rounded-xl p-3">
+          <div className="mx-4 my-3 bg-warning-bg border border-warning/25 rounded-xl p-3">
             <div className="flex items-start gap-2">
-              <AlertTriangle size={14} className="text-warning mt-0.5 shrink-0" />
+              <AlertTriangle size={13} className="text-warning mt-0.5 shrink-0" />
               <p className="text-xs text-amber-700 leading-relaxed">
-                <span className="font-700">{flaggedCount} questions need review</span> before finalizing. Low confidence or diagram detected.
+                <span className="font-700">{flaggedCount} questions need review</span> before finalizing.
               </p>
             </div>
           </div>
         )}
 
-        {/* Actions */}
-        <div className="p-4 space-y-2">
+        {/* ── Actions ──────────────────────────────────────────── */}
+        <div className="p-4 mt-auto space-y-2">
           <button
             onClick={handleSaveDraft}
             disabled={isSaving || !evalId}
-            className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600 flex items-center justify-center gap-2 disabled:opacity-70"
+            className="btn-secondary w-full h-10 text-sm gap-2 disabled:opacity-60"
           >
-            {isSaving ? (
-              <>
-                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save size={14} />
-                Save Draft
-              </>
-            )}
+            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {isSaving ? 'Saving…' : 'Save Draft'}
           </button>
 
           <button
             onClick={handleExport}
-            className="w-full py-2.5 rounded-xl text-sm font-600 flex items-center justify-center gap-2 border border-border hover:bg-muted transition-colors text-foreground"
+            className="btn-ghost w-full h-10 text-sm gap-2"
           >
             <Download size={14} />
-            Export CSV Report
+            Export CSV
           </button>
 
           <button
             onClick={() => setShowFinalizeModal(true)}
             disabled={!evalId}
-            className="btn-primary w-full py-2.5 rounded-xl text-sm font-600 flex items-center justify-center gap-2 disabled:opacity-70"
+            className="btn-primary w-full h-10 text-sm gap-2 disabled:opacity-60"
           >
             <CheckCircle2 size={14} />
             Finalize Evaluation
           </button>
 
-          <p className="text-xs text-muted-foreground text-center pt-1">
-            Finalizing locks all scores and saves the final report.
+          <p className="text-[11px] text-muted-foreground text-center pt-0.5">
+            Finalizing locks all scores and generates the final report.
           </p>
         </div>
       </aside>
@@ -260,7 +237,7 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
       <ConfirmModal
         isOpen={showFinalizeModal}
         title="Finalize this evaluation?"
-        description={`This will lock all scores (${totalObtained}/${displayMax} marks) and generate the final report. ${flaggedCount > 0 ? `Warning: ${flaggedCount} questions are still flagged for review.` : 'All questions have been reviewed.'} This action cannot be undone.`}
+        description={`This will lock all scores (${totalObtained}/${displayMax} marks) and generate the final report. ${flaggedCount > 0 ? `Warning: ${flaggedCount} questions are still flagged.` : 'All questions reviewed.'} This action cannot be undone.`}
         confirmLabel="Yes, Finalize"
         cancelLabel="Continue Reviewing"
         variant="primary"

@@ -250,7 +250,7 @@ export default function AnswerGeneratorClient() {
               className="input-field text-sm resize-none"
             />
 
-            <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
               <div>
                 <label className="block text-xs font-600 text-muted-foreground mb-1">Subject</label>
                 <input

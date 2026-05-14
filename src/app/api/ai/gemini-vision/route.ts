@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
 
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const finishReason: string = data.candidates?.[0]?.finishReason ?? 'STOP';
 
     if (!text) {
       return NextResponse.json(
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ text });
+    return NextResponse.json({ text, finishReason });
   } catch (err: any) {
     console.error('gemini-vision route error:', err);
     return NextResponse.json(
