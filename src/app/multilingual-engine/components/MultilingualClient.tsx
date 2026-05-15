@@ -29,8 +29,15 @@ type HistoryItem = {
 };
 
 const LANGUAGES = [
-  'Auto-detect', 'English', 'Hindi', 'Telugu', 'Tamil',
-  'Kannada', 'Marathi', 'Bengali', 'Gujarati', 'Malayalam', 'Punjabi',
+  'Auto-detect',
+  // Indian languages
+  'Hindi', 'Telugu', 'Tamil', 'Kannada', 'Marathi', 'Bengali', 'Gujarati', 'Malayalam', 'Punjabi', 'Odia', 'Urdu', 'Assamese',
+  // European
+  'English', 'French', 'German', 'Spanish', 'Portuguese', 'Italian', 'Dutch', 'Russian', 'Polish', 'Swedish', 'Norwegian', 'Danish', 'Finnish', 'Greek', 'Ukrainian',
+  // Asian
+  'Chinese (Simplified)', 'Chinese (Traditional)', 'Japanese', 'Korean', 'Arabic', 'Hebrew', 'Turkish', 'Persian', 'Thai', 'Vietnamese', 'Indonesian', 'Malay', 'Tagalog', 'Sinhala', 'Nepali', 'Burmese',
+  // Others
+  'Swahili', 'Afrikaans',
 ];
 
 const LANG_FLAGS: Record<string, string> = {
@@ -96,7 +103,7 @@ export default function MultilingualClient() {
         ? `The student wrote in ${language}. Evaluate accordingly.`
         : 'Auto-detect the language from the handwriting/text.';
 
-      const prompt = `You are a multilingual answer sheet evaluator for Indian school exams.
+      const prompt = `You are a multilingual answer sheet evaluator supporting all languages worldwide.
 
 ${langInstruction}
 
@@ -210,7 +217,7 @@ Return ONLY valid JSON (no markdown fences):
           <Languages size={22} className="text-primary" />
           <div>
             <h1 className="text-2xl font-bold text-foreground">Multilingual Engine</h1>
-            <p className="text-sm text-muted-foreground">Evaluate answer sheets written in any Indian language</p>
+            <p className="text-sm text-muted-foreground">Evaluate answer sheets written in any language from around the world</p>
           </div>
         </div>
         {history.length > 0 && (
@@ -260,7 +267,7 @@ Return ONLY valid JSON (no markdown fences):
       {/* Feature info cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {[
-          { icon: Globe, title: 'Auto Language Detection', desc: 'Detects 10+ Indian languages from handwriting', color: 'text-primary', bg: 'bg-primary/10' },
+          { icon: Globe, title: 'Auto Language Detection', desc: 'Detects 50+ world languages from handwriting', color: 'text-primary', bg: 'bg-primary/10' },
           { icon: FileText, title: 'Native Evaluation', desc: 'Scores answers in the student\'s own language', color: 'text-positive', bg: 'bg-positive/10' },
           { icon: Languages, title: 'Bilingual Feedback', desc: 'Feedback in English + student\'s language', color: 'text-warning', bg: 'bg-warning/10' },
         ].map(({ icon: Icon, title, desc, color, bg }) => (
@@ -391,7 +398,7 @@ Return ONLY valid JSON (no markdown fences):
               </div>
               <h3 className="text-base font-bold text-foreground mb-2">Upload to begin</h3>
               <p className="text-sm text-muted-foreground max-w-xs">
-                Upload any answer sheet — written in Hindi, Telugu, Tamil, or any Indian language — and let AI evaluate it.
+                Upload any answer sheet in any language — Hindi, Arabic, French, Japanese, Spanish, or any other language worldwide — and let AI evaluate it.
               </p>
               {!loadingHistory && history.length > 0 && (
                 <p className="text-xs text-primary mt-3 font-600">
