@@ -129,14 +129,6 @@ export default function DashboardHeader() {
             <p className="text-white/70 font-bold mt-4 text-lg">Welcome back, {name}. Your system is optimized and ready.</p>
           </div>
 
-          <div className="flex items-center gap-4 shrink-0">
-            <button className="px-8 py-4 rounded-2xl bg-white text-[#1A6BFF] font-black text-sm uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl flex items-center gap-3">
-              <Upload size={18} /> Upload Sheets
-            </button>
-            <button className="px-8 py-4 rounded-2xl bg-black/20 backdrop-blur-xl border border-white/20 text-white font-black text-sm uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-3">
-              <Lightbulb size={18} /> AI Assistant
-            </button>
-          </div>
         </div>
       </div>
     </div>
