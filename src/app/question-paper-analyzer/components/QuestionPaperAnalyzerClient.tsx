@@ -64,7 +64,7 @@ async function compressImage(file: File): Promise<string> {
   });
 }
 
-async function uploadPdfToGemini(file: File): Promise<{ fileUri: string; mimeType: string }> {
+async function uploadPdfToGemini(file: File): Promise<{ base64Data: string; mimeType: string }> {
   const formData = new FormData();
   formData.append('file', file);
   const res = await fetch('/api/ai/gemini-upload', { method: 'POST', body: formData });
@@ -111,8 +111,8 @@ export default function QuestionPaperAnalyzerClient() {
     if (!visionPayload) {
       const isPdf = f.type === 'application/pdf';
       if (isPdf) {
-        const { fileUri, mimeType } = await uploadPdfToGemini(f);
-        visionPayload = { fileUri, mimeType };
+        const { base64Data, mimeType } = await uploadPdfToGemini(f);
+        visionPayload = { base64Data, mimeType };
       } else {
         const dataUri = await compressImage(f);
         const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);

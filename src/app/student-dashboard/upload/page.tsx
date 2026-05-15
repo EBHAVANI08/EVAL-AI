@@ -65,14 +65,14 @@ export default function StudentUploadPage() {
       fd.append('file', file);
       const uploadRes = await fetch('/api/ai/gemini-upload', { method: 'POST', body: fd });
       if (!uploadRes.ok) throw new Error('File upload to storage failed');
-      const { fileUri, mimeType } = await uploadRes.json();
+      const { base64Data, mimeType } = await uploadRes.json();
 
       /* 2. Save submission record to MongoDB */
       setStatus('saving');
       const saveRes = await fetch('/api/student-uploads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, grade, fileUri, mimeType, fileName: file.name }),
+        body: JSON.stringify({ subject, grade, base64Data, mimeType, fileName: file.name }),
       });
       if (!saveRes.ok) throw new Error('Failed to save submission');
       const saved = await saveRes.json();

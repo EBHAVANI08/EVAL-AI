@@ -134,8 +134,8 @@ Return ONLY valid JSON (no markdown fences):
           const e = await uploadRes.json().catch(() => ({ error: 'PDF upload failed' }));
           throw new Error(e.error || 'PDF upload failed');
         }
-        const { fileUri, mimeType } = await uploadRes.json();
-        visionPayload = { fileUri, mimeType, prompt };
+        const { base64Data, mimeType } = await uploadRes.json();
+        visionPayload = { base64Data, mimeType, prompt };
       } else {
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();

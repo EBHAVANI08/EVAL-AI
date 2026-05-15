@@ -103,8 +103,8 @@ export default function QuestionPapersClient() {
         formData.append('file', uploadFile);
         const uploadRes = await fetch('/api/ai/gemini-upload', { method: 'POST', body: formData });
         if (!uploadRes.ok) throw new Error('Upload failed');
-        const { fileUri, mimeType } = await uploadRes.json();
-        payload = { fileUri, mimeType };
+        const { base64Data, mimeType } = await uploadRes.json();
+        payload = { base64Data, mimeType };
       }
 
       const prompt = `You are extracting questions from a question paper image or PDF.
