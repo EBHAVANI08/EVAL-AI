@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // Statuses that are safe to retry (transient server or rate-limit errors)
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
