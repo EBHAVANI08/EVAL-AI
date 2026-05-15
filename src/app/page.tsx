@@ -708,7 +708,7 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      <style jsx global>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @keyframes gradient-x {
           0%, 100% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
@@ -724,7 +724,7 @@ export default function LandingPage() {
           to { transform: rotate(360deg); }
         }
         .animate-spin-slow { animation: spin-slow 18s linear infinite; }
-      `}</style>
+      ` }} />
     </div>
   );
 }
