@@ -1,36 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useSession } from 'next-auth/react';
-import { 
-  Upload, Lightbulb, Sparkles, CalendarDays, Bell, ChevronDown, Search
+import {
+  Sparkles, Bell, ChevronDown, Search
 } from 'lucide-react';
 import NotificationDropdown from '@/components/NotificationDropdown';
 import ProfileDropdown from '@/components/ProfileDropdown';
-
-function useGreeting(name: string) {
-  const [greeting, setGreeting] = useState('Good morning');
-  const [today, setToday] = useState('');
-
-  useEffect(() => {
-    const hour = new Date().getHours();
-    setGreeting(hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
-    setToday(new Date().toLocaleDateString('en-IN', {
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    }));
-  }, []);
-
-  return { greeting, name: name.split(' ')[0], today };
-}
 
 export default function DashboardHeader() {
   const { data: session } = useSession();
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  
+
   const userName = session?.user?.name ?? 'Teacher';
-  const { greeting, name, today } = useGreeting(userName);
   const userInitial = userName.charAt(0).toUpperCase();
 
   return (
@@ -42,12 +26,6 @@ export default function DashboardHeader() {
             <input type="text" placeholder="Search students, exams..." className="bg-transparent border-none text-xs font-bold text-[#0A0F1E] outline-none w-full placeholder:text-[#94A3B8]" />
           </div>
           
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-50 border border-blue-100">
-              <CalendarDays size={14} className="text-[#1A6BFF]" />
-              <span className="text-[11px] font-black text-[#1A6BFF] uppercase tracking-widest">{today}</span>
-            </div>
-          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -123,13 +101,13 @@ export default function DashboardHeader() {
             <div className="flex items-center gap-3 mb-4">
               <div className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 flex items-center gap-2">
                 <Sparkles size={12} className="text-[#CCFF00]" />
-                <span className="text-white text-[10px] font-black uppercase tracking-[0.2em]">{greeting}</span>
+                <span className="text-white text-[10px] font-black uppercase tracking-[0.2em]">AI Examination Platform</span>
               </div>
             </div>
             <h1 className="text-4xl lg:text-5xl font-black text-white leading-[1.1] tracking-tighter max-w-xl">
               Elevate your grading with <span className="text-[#CCFF00]">AI Intelligence.</span>
             </h1>
-            <p className="text-white/70 font-bold mt-4 text-lg">Welcome back, {name}. Your system is optimized and ready.</p>
+            <p className="text-white/70 font-bold mt-4 text-lg">Welcome back, {userName}. Your system is optimized and ready.</p>
           </div>
 
         </div>
