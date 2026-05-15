@@ -30,8 +30,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={dmSans.variable}>
-      <body className={dmSans.className}>
+    <html lang="en" className={dmSans.variable} suppressHydrationWarning>
+      <body className={dmSans.className} suppressHydrationWarning>
         <Providers>
           {children}
           <Toaster
