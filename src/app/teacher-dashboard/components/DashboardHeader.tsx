@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useSession } from 'next-auth/react';
 import { 
@@ -10,15 +10,18 @@ import NotificationDropdown from '@/components/NotificationDropdown';
 import ProfileDropdown from '@/components/ProfileDropdown';
 
 function useGreeting(name: string) {
-  return useMemo(() => {
+  const [greeting, setGreeting] = useState('Good morning');
+  const [today, setToday] = useState('');
+
+  useEffect(() => {
     const hour = new Date().getHours();
-    const greeting =
-      hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    const today = new Date().toLocaleDateString('en-IN', {
+    setGreeting(hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
+    setToday(new Date().toLocaleDateString('en-IN', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    });
-    return { greeting, name: name.split(' ')[0], today };
-  }, [name]);
+    }));
+  }, []);
+
+  return { greeting, name: name.split(' ')[0], today };
 }
 
 export default function DashboardHeader() {
