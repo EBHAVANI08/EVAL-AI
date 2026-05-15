@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
+import { motion, useScroll, useSpring, useTransform, MotionValue } from 'framer-motion';
 import {
   Brain, ClipboardCheck, FileText, Lightbulb, ScanLine, Languages,
   Upload, ShieldCheck, TrendingUp,
@@ -140,14 +140,17 @@ const footerLinks = [
 /* ─── Main ───────────────────────────────────────────────────────── */
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
   const heroRef = useRef(null);
   const { scrollY } = useScroll();
+  // These transforms are only active after mount to prevent SSR hydration mismatch (#418)
   const heroY = useTransform(scrollY, [0, 800], [0, 300]);
   const heroOpacity = useTransform(scrollY, [0, 400], [1, 0]);
 
   useEffect(() => {
+    setMounted(true);
     const h = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', h);
     return () => window.removeEventListener('scroll', h);
@@ -221,7 +224,8 @@ export default function LandingPage() {
         ))}
 
         <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-28 items-center">
-          <motion.div style={{ y: heroY, opacity: heroOpacity }}>
+          {/* y/opacity only applied client-side to avoid SSR hydration mismatch */}
+          <motion.div style={mounted ? { y: heroY, opacity: heroOpacity } : {}}>
             <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6 }}
               className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white border border-orange-100 shadow-md mb-8">
