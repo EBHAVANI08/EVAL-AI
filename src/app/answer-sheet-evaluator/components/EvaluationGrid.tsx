@@ -63,9 +63,10 @@ function SemanticSimilarityBar({ value }: { value: number }) {
 
 function HybridScoreCard({ q }: { q: QuestionEvaluation }) {
   if (q.maxMarks === 0) return null;
-  const kpTotal = q.keyPoints.length;
-  const kpCovered = q.keyPoints.filter((k) => k.covered && !k.partial).length;
-  const kpPartial = q.keyPoints.filter((k) => k.partial).length;
+  const keyPoints = q.keyPoints ?? [];
+  const kpTotal = keyPoints.length;
+  const kpCovered = keyPoints.filter((k) => k.covered && !k.partial).length;
+  const kpPartial = keyPoints.filter((k) => k.partial).length;
   const kpPct = kpTotal > 0 ? Math.round(((kpCovered + kpPartial * 0.5) / kpTotal) * 100) : null;
   const aiPct = Math.round((q.aiScore / q.maxMarks) * 100);
   const hybridPct = Math.round((q.hybridScore / q.maxMarks) * 100);

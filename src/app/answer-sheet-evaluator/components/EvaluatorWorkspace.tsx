@@ -992,6 +992,7 @@ Output the JSON array now:`;
             sections={sections}
             studentInfo={studentInfo}
             scannedImages={scannedImages}
+            onUpdateStudentInfo={(updated) => setStudentInfo((prev) => ({ ...prev, ...updated }))}
           />
         </div>
 

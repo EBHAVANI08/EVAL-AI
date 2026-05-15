@@ -13,8 +13,8 @@ interface AppLayoutProps {
 
 const pageVariants = {
   initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] } },
-  exit:    { opacity: 0, y: -8, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' as const } },
+  exit:    { opacity: 0, y: -8, transition: { duration: 0.2, ease: 'easeIn' as const } },
 };
 
 export default function AppLayout({ children }: AppLayoutProps) {
@@ -43,7 +43,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
           </motion.button>
           <AppLogo size={26} />
           <div className="flex flex-col">
-            <span className="font-700 text-sm text-foreground leading-tight tracking-tight">Eval AI</span>
+            <span className="font-700 text-sm text-foreground leading-tight tracking-tight">Grade.ai</span>
             <span className="text-[11px] text-orange-500 font-600">Teacher Portal</span>
           </div>
         </motion.header>

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { signIn } from 'next-auth/react';
+import { signIn, signOut, getSession } from 'next-auth/react';
 import { useForm } from 'react-hook-form';
 import {
   BookOpen, GraduationCap, ShieldCheck, Brain,
@@ -60,8 +60,20 @@ export default function AuthPageClient() {
     setLoading(true);
     const res = await signIn('credentials', { email: data.email, password: data.password, redirect: false });
     if (res?.ok) {
-      toast.success('Welcome back!');
-      window.location.href = callbackUrls[role];
+      // Verify the signed-in user's role matches the selected portal
+      const session = await getSession();
+      const userRole = (session?.user as any)?.role as Role | undefined;
+      if (userRole && userRole !== role) {
+        // Role mismatch — wrong portal selected
+        await signOut({ redirect: false });
+        const portalLabel = roles.find(r => r.id === userRole)?.label ?? userRole;
+        loginForm.setError('email', { message: `Wrong portal — these credentials belong to a ${portalLabel} account` });
+        toast.error(`Please select the "${portalLabel}" portal to sign in`);
+        setLoading(false);
+      } else {
+        toast.success('Welcome back!');
+        window.location.href = callbackUrls[role];
+      }
     } else {
       loginForm.setError('email', { message: 'Invalid email or password' });
       setLoading(false);
@@ -136,7 +148,7 @@ export default function AuthPageClient() {
             <Brain size={24} className="text-white" />
           </div>
           <div>
-            <p className="font-bold text-white text-lg leading-tight">Eval AI</p>
+            <p className="font-bold text-white text-lg leading-tight">Grade.ai</p>
             <p className="text-white/50 text-xs">AI Examination Platform</p>
           </div>
         </div>
@@ -180,7 +192,7 @@ export default function AuthPageClient() {
             <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
               <Brain size={18} className="text-white" />
             </div>
-            <span className="font-bold text-foreground text-lg">Eval AI</span>
+            <span className="font-bold text-foreground text-lg">Grade.ai</span>
           </div>
 
           {/* Mode tabs */}

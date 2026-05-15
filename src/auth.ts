@@ -21,6 +21,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
+
+        // Dummy logins for testing
+        const dummyUsers = [
+          { email: 'admin@grade.ai',   password: 'admin123',   name: 'Super Admin', role: 'admin' },
+          { email: 'teacher@grade.ai', password: 'teacher123', name: 'Bhavani',     role: 'teacher' },
+          { email: 'student@grade.ai', password: 'student123', name: 'Aman Deep',   role: 'student', rollNo: 'S101' },
+        ];
+
+        const dummyMatch = dummyUsers.find(u => u.email === credentials.email && u.password === credentials.password);
+        if (dummyMatch) {
+          return {
+            id:     dummyMatch.email,
+            name:   dummyMatch.name,
+            email:  dummyMatch.email,
+            role:   dummyMatch.role,
+            rollNo: dummyMatch.rollNo ?? null,
+          };
+        }
+
         try {
           const db = await getDb();
           const user = await db.collection('users').findOne({

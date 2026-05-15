@@ -1,10 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, Calendar, Hash, Globe, CheckCircle2, Clock, Camera, X, ZoomIn } from 'lucide-react';
+import { BookOpen, Calendar, Hash, Globe, CheckCircle2, Clock, Camera, X, ZoomIn, Pencil, Save } from 'lucide-react';
 import type { QuestionEvaluation, StudentInfo } from './EvaluatorWorkspace';
 import StatusBadge from '@/components/ui/StatusBadge';
 
+// Strip sub-part markers like (i), (ii), (a), [a], etc. to get parent question number
+function getParentQNo(qNo: string) {
+  return qNo.replace(/[\s]*[\[(].*/, '').trim();
+}
 
 interface StudentInfoPanelProps {
   questions: QuestionEvaluation[];
@@ -13,49 +17,124 @@ interface StudentInfoPanelProps {
   sections: string[];
   studentInfo: StudentInfo;
   scannedImages?: string[];
+  onUpdateStudentInfo?: (updated: Partial<StudentInfo>) => void;
 }
 
-export default function StudentInfoPanel({ questions, activeSection, setActiveSection, sections, studentInfo, scannedImages = [] }: StudentInfoPanelProps) {
+export default function StudentInfoPanel({
+  questions, activeSection, setActiveSection, sections,
+  studentInfo, scannedImages = [], onUpdateStudentInfo,
+}: StudentInfoPanelProps) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState<StudentInfo>(studentInfo);
+
   const reviewed = questions.filter((q) => q.teacherScore !== null || q.status === 'reviewed').length;
   const flagged = questions.filter((q) => q.status === 'flagged').length;
-  const progress = Math.round((reviewed / questions.length) * 100);
+  const progress = Math.round((reviewed / Math.max(questions.length, 1)) * 100);
   const initials = studentInfo.name
     ? studentInfo.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
     : '—';
 
+  // Count unique parent questions (38 parent questions even if AI created 56 sub-entries)
+  const uniqueParentCount = new Set(questions.map((q) => getParentQNo(q.qNo))).size;
+  const totalMarks = questions.reduce((a, q) => a + q.maxMarks, 0);
+
+  const handleEditSave = () => {
+    onUpdateStudentInfo?.(editDraft);
+    setIsEditing(false);
+  };
+
+  const handleEditCancel = () => {
+    setEditDraft(studentInfo);
+    setIsEditing(false);
+  };
+
+  const fields: { key: keyof StudentInfo; label: string; placeholder: string; icon: React.ElementType }[] = [
+    { key: 'name',    label: 'Name',    placeholder: 'Student name',    icon: Hash },
+    { key: 'rollNo',  label: 'Roll No', placeholder: 'Roll number',     icon: Hash },
+    { key: 'class',   label: 'Class',   placeholder: 'e.g. 12A',        icon: Hash },
+    { key: 'school',  label: 'School',  placeholder: 'School name',     icon: Calendar },
+    { key: 'subject', label: 'Subject', placeholder: 'e.g. Mathematics',icon: BookOpen },
+    { key: 'board',   label: 'Board',   placeholder: 'e.g. CBSE',       icon: Globe },
+  ];
+
   return (
     <aside className="w-full lg:w-64 xl:w-72 lg:shrink-0 border-r border-border bg-card overflow-y-auto scrollbar-thin">
+
       {/* Student card */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
             <span className="text-sm font-bold text-primary">{initials}</span>
           </div>
-          <div>
-            <p className="text-sm font-700 text-foreground">{studentInfo.name || '—'}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-700 text-foreground truncate">{studentInfo.name || '—'}</p>
             <p className="text-xs text-muted-foreground">{studentInfo.rollNo || 'No roll number'}</p>
           </div>
+          {onUpdateStudentInfo && !isEditing && (
+            <button
+              onClick={() => { setEditDraft(studentInfo); setIsEditing(true); }}
+              className="shrink-0 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-primary transition-colors"
+              title="Edit student info"
+            >
+              <Pencil size={13} />
+            </button>
+          )}
         </div>
         <StatusBadge variant="review" />
 
-        <div className="mt-3 space-y-2">
-          {[
-            { icon: BookOpen, label: 'Subject', value: studentInfo.subject },
-            { icon: Hash, label: 'Class', value: studentInfo.class },
-            { icon: Globe, label: 'Board', value: studentInfo.board },
-            { icon: Calendar, label: 'School', value: studentInfo.school },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={`info-${item.label}`} className="flex items-center gap-2">
-                <Icon size={13} className="text-muted-foreground shrink-0" />
-                <span className="text-xs text-muted-foreground">{item.label}:</span>
-                <span className="text-xs font-600 text-foreground">{item.value || '—'}</span>
+        {/* Read-only info rows */}
+        {!isEditing && (
+          <div className="mt-3 space-y-2">
+            {[
+              { icon: BookOpen, label: 'Subject', value: studentInfo.subject },
+              { icon: Hash,     label: 'Class',   value: studentInfo.class },
+              { icon: Globe,    label: 'Board',   value: studentInfo.board },
+              { icon: Calendar, label: 'School',  value: studentInfo.school },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={`info-${item.label}`} className="flex items-center gap-2">
+                  <Icon size={13} className="text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground">{item.label}:</span>
+                  <span className="text-xs font-600 text-foreground">{item.value || '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Edit mode — inline fields */}
+        {isEditing && (
+          <div className="mt-3 space-y-2">
+            {fields.map(({ key, label, placeholder }) => (
+              <div key={key}>
+                <label className="block text-[11px] font-600 text-muted-foreground mb-0.5">{label}</label>
+                <input
+                  type="text"
+                  value={editDraft[key]}
+                  onChange={(e) => setEditDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                  className="w-full text-xs border border-border rounded-lg px-2.5 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                />
               </div>
-            );
-          })}
-        </div>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleEditSave}
+                className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-primary text-white text-xs font-600 hover:bg-primary/90 transition-colors"
+              >
+                <Save size={12} /> Save
+              </button>
+              <button
+                onClick={handleEditCancel}
+                className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg bg-muted text-muted-foreground text-xs font-600 hover:bg-muted/70 transition-colors"
+              >
+                <X size={12} /> Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Progress */}
@@ -117,7 +196,7 @@ export default function StudentInfoPanel({ questions, activeSection, setActiveSe
           })}
         </div>
 
-        {/* Paper info */}
+        {/* Paper info — shows parent question count, not sub-entry count */}
         <div className="mt-4 pt-4 border-t border-border">
           <p className="text-xs font-600 text-muted-foreground uppercase tracking-wider mb-2">Question Paper</p>
           <div className="bg-muted rounded-xl p-3">
@@ -126,8 +205,13 @@ export default function StudentInfoPanel({ questions, activeSection, setActiveSe
               <div>
                 <p className="text-xs font-600 text-foreground leading-tight">{studentInfo.subject || 'Unknown subject'}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {questions.length} questions · {questions.reduce((a, q) => a + q.maxMarks, 0)} total marks
+                  {uniqueParentCount} question{uniqueParentCount !== 1 ? 's' : ''} · {totalMarks} total marks
                 </p>
+                {uniqueParentCount !== questions.length && (
+                  <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                    ({questions.length} entries incl. sub-parts)
+                  </p>
+                )}
               </div>
             </div>
           </div>

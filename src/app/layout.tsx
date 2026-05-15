@@ -18,9 +18,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Eval AI — AI Examination Platform',
+  title: 'Grade.ai — AI Examination Platform',
   description:
-    'Eval AI helps teachers evaluate answer sheets, analyze question papers, and generate ideal answers using AI — built for Indian education boards.',
+    'Grade.ai helps teachers evaluate answer sheets, analyze question papers, and generate ideal answers using AI — built for Indian education boards.',
   icons: {
     icon: [{ url: '/favicon.ico', type: 'image/x-icon' }],
   },

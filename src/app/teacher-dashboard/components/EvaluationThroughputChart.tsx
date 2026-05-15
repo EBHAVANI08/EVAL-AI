@@ -10,17 +10,20 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import GlassCard from '@/components/GlassCard';
 
-const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number; name: string }[]; label?: string }) => {
+const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-card border border-border rounded-xl shadow-dropdown px-4 py-3">
-      <p className="text-xs font-600 text-muted-foreground mb-2">{label}</p>
-      {payload.map((p) => (
-        <div key={`tip-${p.name}`} className="flex items-center gap-2 text-sm">
-          <span className={`w-2 h-2 rounded-full ${p.name === 'evaluations' ? 'bg-primary' : 'bg-accent'}`} />
-          <span className="text-muted-foreground capitalize">{p.name === 'evaluations' ? 'Total Evaluations' : 'Avg Score'}</span>
-          <span className="font-700 text-foreground ml-auto pl-4">{p.value}</span>
+    <div className="bg-[#0A0F1E] border-none rounded-xl shadow-2xl px-4 py-3 text-white">
+      <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">{label}</p>
+      {payload.map((p: any) => (
+        <div key={`tip-${p.name}`} className="flex items-center gap-3 text-sm mb-1 last:mb-0">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+          <span className="opacity-70 text-[11px] font-bold capitalize">
+            {p.name === 'evaluations' ? 'Volume' : 'Avg Score'}
+          </span>
+          <span className="font-black ml-auto">{p.value}</span>
         </div>
       ))}
     </div>
@@ -48,78 +51,80 @@ export default function EvaluationThroughputChart() {
   }, []);
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
-      <div className="flex items-center justify-between mb-1">
+    <GlassCard className="flex flex-col min-h-[350px]">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h3 className="section-header">Evaluation Trends</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Last 6 months — Volume and performance</p>
+          <h3 className="font-black text-[#0A0F1E] text-lg">Evaluation Trends</h3>
+          <p className="text-sm text-[#64748B] font-medium">Historical volume and class progress</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block" />
-            <span className="text-xs text-muted-foreground">Volume</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#1A6BFF]" />
+            <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Volume</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-accent inline-block" />
-            <span className="text-xs text-muted-foreground">Avg Score</span>
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#CCFF00]" />
+            <span className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest">Score</span>
           </div>
         </div>
       </div>
-      <div className="mt-4">
+
+      <div className="flex-1 w-full h-[220px]">
         {loading ? (
-          <div className="h-[220px] flex items-center justify-center">
-            <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
-          </div>
-        ) : data.length === 0 ? (
-          <div className="h-[220px] flex items-center justify-center text-xs text-muted-foreground">
-            No historical data available
+          <div className="h-full flex items-center justify-center">
+            <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full" />
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradVol" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#1A6BFF" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#1A6BFF" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="gradScore" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#CCFF00" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#CCFF00" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid stroke="#F1F5F9" strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontFamily: 'var(--font-plus-jakarta-sans)' }}
+                tick={{ fontSize: 11, fill: '#94A3B8', fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
+                dy={10}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: 'var(--muted-foreground)', fontFamily: 'var(--font-plus-jakarta-sans)' }}
+                tick={{ fontSize: 11, fill: '#94A3B8', fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#E2E8F5', strokeWidth: 1 }} />
               <Area
                 type="monotone"
                 dataKey="evaluations"
-                stroke="var(--primary)"
-                strokeWidth={2}
+                stroke="#1A6BFF"
+                strokeWidth={3}
                 fill="url(#gradVol)"
-                dot={false}
+                animationDuration={2000}
+                dot={{ r: 4, fill: '#1A6BFF', strokeWidth: 2, stroke: '#fff' }}
+                activeDot={{ r: 6, strokeWidth: 0 }}
               />
               <Area
                 type="monotone"
                 dataKey="score"
-                stroke="var(--accent)"
-                strokeWidth={2}
+                stroke="#A8E600"
+                strokeWidth={3}
                 fill="url(#gradScore)"
-                dot={false}
+                animationDuration={2500}
+                dot={{ r: 4, fill: '#A8E600', strokeWidth: 2, stroke: '#fff' }}
+                activeDot={{ r: 6, strokeWidth: 0 }}
               />
             </AreaChart>
           </ResponsiveContainer>
         )}
       </div>
-    </div>
+    </GlassCard>
   );
 }

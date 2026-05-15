@@ -1,144 +1,164 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
 import {
   Brain, ClipboardCheck, FileText, Lightbulb, ScanLine, Languages,
-  Upload, ShieldCheck, BookOpen, GraduationCap,
-  ArrowRight, CheckCircle2, Zap, Globe, Award, Star,
-  ChevronRight, Menu, X, Terminal, Cpu, Lock,
+  Upload, ShieldCheck, TrendingUp,
+  ArrowRight, CheckCircle2, Zap, Globe, Star,
+  Cpu, Sparkles,
+  Building2, Lock,
 } from 'lucide-react';
 
-/* ── Data ──────────────────────────────────────────────────────────────── */
+/* ─── Feature Card ───────────────────────────────────────────────── */
+const FeatureCard = ({ f, i }: { f: any; i: number }) => {
+  const Icon = f.icon;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay: i * 0.08, duration: 0.5 }}
+      whileHover={{ y: -6 }}
+      className="group relative bg-white border border-slate-100 rounded-3xl p-8 overflow-hidden cursor-default
+                 hover:border-transparent transition-all duration-500
+                 hover:shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_32px_80px_-8px_rgba(0,0,0,0.14)]"
+      style={{ '--glow': f.color } as any}
+    >
+      {/* glow layer */}
+      <div
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none rounded-2xl"
+        style={{ boxShadow: `inset 0 0 80px 0 ${f.color}18` }}
+      />
+      {/* top-right color bleed */}
+      <div
+        className="absolute -top-10 -right-10 w-40 h-40 rounded-full blur-3xl opacity-0 group-hover:opacity-30 transition-opacity duration-700"
+        style={{ backgroundColor: f.color }}
+      />
 
+      {/* icon */}
+      <div
+        className="relative w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-transform duration-500 group-hover:scale-110"
+        style={{ backgroundColor: `${f.color}15` }}
+      >
+        <Icon size={26} style={{ color: f.color }} />
+        {/* icon glow pulse */}
+        <div
+          className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-60 blur-md transition-opacity duration-500"
+          style={{ backgroundColor: f.color }}
+        />
+        <Icon size={26} style={{ color: f.color }} className="relative z-10" />
+      </div>
+
+      {/* text */}
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] mb-2" style={{ color: f.color }}>{f.subtitle}</p>
+      <h3 className="text-xl font-black text-[#0A0F1E] mb-3 tracking-tight">{f.title}</h3>
+      <p className="text-sm text-[#64748B] leading-relaxed mb-5">{f.desc}</p>
+
+      {/* chips */}
+      <div className="flex flex-wrap gap-1.5 mb-6">
+        {f.chips.map((chip: string) => (
+          <span key={chip} className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+            style={{ color: f.color, borderColor: `${f.color}40`, backgroundColor: `${f.color}08` }}>
+            {chip}
+          </span>
+        ))}
+      </div>
+
+      {/* colored glow footer bar */}
+      <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+        style={{ background: `linear-gradient(90deg, ${f.color}, ${f.color}40, transparent)` }} />
+      <div className="absolute -bottom-6 left-4 right-4 h-8 blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-full"
+        style={{ backgroundColor: f.color }} />
+    </motion.div>
+  );
+};
+
+/* ─── Data ───────────────────────────────────────────────────────── */
 const features = [
   {
-    icon: ClipboardCheck, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100',
-    tag: 'MODULE_01',
-    title: 'Answer Sheet Evaluator',
-    desc: 'Ingest scanned answer sheets via OCR pipeline. AI extracts, scores and confidence-rates each response at question-level granularity — results in under 10 seconds.',
-    chips: ['OCR_ENGINE', 'AI_SCORING', 'OVERRIDE_API'],
+    id: '01', icon: ClipboardCheck, color: '#EA580C', bg: 'bg-orange-50',
+    title: 'AutoGrade AI', subtitle: 'Answer Sheet Evaluator',
+    desc: 'Precise question-level evaluation with AI confidence scoring and teacher override API.',
+    chips: ['OCR Engine', 'AI Scoring', 'Override API'],
+    imgSrc: '/images/autograde-ai.png',
   },
   {
-    icon: FileText, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100',
-    tag: 'MODULE_02',
-    title: 'Paper Analyzer',
-    desc: 'Parse question papers programmatically — auto-classify by topic, difficulty tier, and bloom level. Output structured JSON marking schemes ready for evaluation.',
-    chips: ['AUTO_PARSE', 'DIFFICULTY_MAP', 'SCHEMA_OUT'],
+    id: '02', icon: FileText, color: '#7C3AED', bg: 'bg-purple-50',
+    title: 'PaperIQ', subtitle: 'Paper Analyzer',
+    desc: 'Automatic question classification by topic, difficulty tier, and Bloom\'s taxonomy.',
+    chips: ['Auto Parse', 'Difficulty Map', 'Schema Export'],
+    imgSrc: '/images/paperiq.png',
   },
   {
-    icon: Lightbulb, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100',
-    tag: 'MODULE_03',
-    title: 'Answer Generator',
-    desc: 'Synthesize board-calibrated model answers for any question using curriculum-aware LLM inference. Covers CBSE, IB, Cambridge, and all major state boards.',
-    chips: ['CBSE', 'IB', 'CAMBRIDGE', 'STATE_BOARD'],
+    id: '03', icon: Lightbulb, color: '#0891B2', bg: 'bg-cyan-50',
+    title: 'AnswerForge', subtitle: 'Answer Generator',
+    desc: 'Generate curriculum-aware model answers calibrated to CBSE, IB, Cambridge and state boards.',
+    chips: ['CBSE', 'IB', 'Cambridge'],
+    imgSrc: '/images/answerforge.png',
   },
   {
-    icon: ScanLine, color: 'text-cyan-600', bg: 'bg-cyan-50', border: 'border-cyan-100',
-    tag: 'MODULE_04',
-    title: 'Diagram Analyzer',
-    desc: 'Computer-vision layer recognizes hand-drawn diagrams, circuit schematics, and data plots. Evaluates structural accuracy against expected representations.',
-    chips: ['CV_ENGINE', 'SCHEMATICS', 'PLOT_ANALYSIS'],
+    id: '04', icon: ScanLine, color: '#059669', bg: 'bg-green-50',
+    title: 'DiagramVision', subtitle: 'Diagram Analyzer',
+    desc: 'Computer vision to evaluate hand-drawn schematics, circuits, and data plots.',
+    chips: ['CV Engine', 'Schematics', 'Plot Analysis'],
+    imgSrc: '/images/diagramvision.png',
   },
   {
-    icon: Languages, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100',
-    tag: 'MODULE_05',
-    title: 'Multilingual Engine',
-    desc: 'Native-script evaluation across 100+ languages. Zero-degradation accuracy for Devanagari, Arabic, Tamil, Telugu, Bengali and all GCC-region scripts.',
-    chips: ['100+_LANG', 'ARABIC', 'DEVANAGARI', 'GCC_READY'],
+    id: '05', icon: Languages, color: '#DB2777', bg: 'bg-pink-50',
+    title: 'PolyEval', subtitle: 'Multilingual Engine',
+    desc: 'Native-script evaluation across 100+ languages including Devanagari and Arabic.',
+    chips: ['100+ Languages', 'Arabic', 'Devanagari'],
+    imgSrc: '/images/polyeval.png',
   },
   {
-    icon: Upload, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-100',
-    tag: 'MODULE_06',
-    title: 'Student Sheet Upload',
-    desc: 'Secure async file ingestion — student uploads propagate directly into the teacher evaluation queue with subject, grade, and metadata tagging.',
-    chips: ['ASYNC_UPLOAD', 'QUEUE_PUSH', 'METADATA_TAG'],
-  },
-];
-
-const roles = [
-  {
-    icon: BookOpen, bg: 'from-indigo-500 to-violet-600',
-    label: 'ROLE // TEACHER',
-    title: 'Teacher Portal',
-    desc: 'High-throughput evaluation interface. Process 100s of answer sheets with AI pre-scoring, manual override controls, and real-time class analytics — all in a unified workspace.',
-    points: [
-      '98% AI confidence per question',
-      'Single-click score override',
-      'Live class performance dashboard',
-      'On-demand model answer synthesis',
-    ],
-    cta: 'Access Teacher Portal',
-    href: '/login',
-  },
-  {
-    icon: GraduationCap, bg: 'from-cyan-500 to-blue-600',
-    label: 'ROLE // STUDENT',
-    title: 'Student Portal',
-    desc: 'Direct submission interface with real-time result tracking. View per-question AI feedback, score breakdowns, and model answers — then message the teacher with specific doubts.',
-    points: [
-      'Secure direct sheet submission',
-      'Per-question score breakdown',
-      'AI feedback + model answers',
-      'In-app teacher messaging',
-    ],
-    cta: 'Access Student Portal',
-    href: '/login',
-  },
-  {
-    icon: ShieldCheck, bg: 'from-violet-500 to-purple-600',
-    label: 'ROLE // ADMIN',
-    title: 'Admin Console',
-    desc: 'Full platform governance — onboard institutions, manage role assignments, monitor evaluation throughput, and track system health across all nodes from a single control surface.',
-    points: [
-      'Multi-school onboarding',
-      'Platform-wide analytics',
-      'Role-based access control',
-      'System health telemetry',
-    ],
-    cta: 'Access Admin Console',
-    href: '/login',
+    id: '06', icon: Upload, color: '#D97706', bg: 'bg-amber-50',
+    title: 'SheetHub', subtitle: 'Submission Portal',
+    desc: 'Secure async file ingestion with automatic subject tagging and queue management.',
+    chips: ['Async Upload', 'Queue Push', 'Metadata Tag'],
+    imgSrc: '/images/sheethub.png',
   },
 ];
 
 const stats = [
-  { value: '98%',  label: 'AI_CONFIDENCE',    icon: Star  },
-  { value: '100+', label: 'LANG_SUPPORTED',    icon: Globe },
-  { value: '10×',  label: 'FASTER_VS_MANUAL',  icon: Zap   },
-  { value: '24/7', label: 'UPTIME_SLA',         icon: Award },
+  { value: '98%',  label: 'AI Accuracy',   icon: Star },
+  { value: '100+', label: 'Languages',      icon: Globe },
+  { value: '10×',  label: 'Efficiency',     icon: Zap },
+  { value: '500+', label: 'Institutions',   icon: Building2 },
 ];
 
 const workflow = [
+  { step: '01', icon: Upload,        title: 'Upload',  desc: 'Upload scanned answer sheets via our secure endpoint.' },
+  { step: '02', icon: Cpu,           title: 'Process', desc: 'AI runs OCR, extraction, and per-question scoring.' },
+  { step: '03', icon: ClipboardCheck,title: 'Review',  desc: 'Teachers audit and finalize AI-generated marks.' },
+  { step: '04', icon: CheckCircle2,  title: 'Publish', desc: 'Scores sync directly to student dashboards.' },
+];
+
+const footerLinks = [
   {
-    step: '01', icon: Upload,
-    title: 'INGEST',
-    desc: 'Teacher or student pushes scanned / photographed answer sheet via secure upload endpoint.',
+    heading: 'Product',
+    links: ['AutoGrade AI', 'PaperIQ', 'AnswerForge', 'DiagramVision', 'PolyEval', 'SheetHub'],
   },
   {
-    step: '02', icon: Cpu,
-    title: 'PROCESS',
-    desc: 'AI pipeline runs OCR → answer extraction → per-question scoring with confidence weighting.',
+    heading: 'Platform',
+    links: ['Teacher Portal', 'Student Portal', 'Admin Console', 'API Reference', 'Integrations'],
   },
   {
-    step: '03', icon: Terminal,
-    title: 'REVIEW',
-    desc: 'Teacher audits AI scores in the evaluation workspace. Override any mark with a single action.',
-  },
-  {
-    step: '04', icon: CheckCircle2,
-    title: 'PUBLISH',
-    desc: 'Finalized scores and AI feedback delivered to student dashboard. Audit trail stored in DB.',
+    heading: 'Company',
+    links: ['About KAM Global', 'Careers', 'Press Kit', 'Privacy Policy', 'Terms of Service'],
   },
 ];
 
-const compliance = ['ISO 27001', 'SOC 2', 'GDPR', 'ZATCA'];
-
-/* ── Page ──────────────────────────────────────────────────────────────── */
-
+/* ─── Main ───────────────────────────────────────────────────────── */
 export default function LandingPage() {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
+  const heroRef = useRef(null);
+  const { scrollY } = useScroll();
+  const heroY = useTransform(scrollY, [0, 800], [0, 300]);
+  const heroOpacity = useTransform(scrollY, [0, 400], [1, 0]);
 
   useEffect(() => {
     const h = () => setScrolled(window.scrollY > 20);
@@ -147,377 +167,573 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-[#FDFCFB] selection:bg-orange-600/10 selection:text-orange-900 overflow-x-hidden">
 
-      {/* ── Navbar ─────────────────────────────────────────────────── */}
-      <header className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/90 backdrop-blur-md shadow-sm border-b border-border' : 'bg-transparent'}`}>
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-sm">
-              <Brain size={18} className="text-white" />
+      {/* ── Progress bar ──────────────────────────────────────────── */}
+      <motion.div className="fixed top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-orange-600 via-rose-500 to-amber-500 origin-left z-[200]" style={{ scaleX }} />
+
+      {/* ── Navbar ───────────────────────────────────────────────── */}
+      <header className={`fixed top-0 inset-x-0 z-[100] transition-all duration-500 ${
+        scrolled ? 'py-3 bg-white/80 backdrop-blur-2xl border-b border-slate-100 shadow-sm' : 'py-6 bg-transparent'
+      }`}>
+        <div className="max-w-[1600px] mx-auto px-12 flex items-center justify-between">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-3 group cursor-pointer">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-600 to-rose-600 flex items-center justify-center shadow-lg shadow-orange-600/25 group-hover:scale-105 transition-transform duration-300">
+              <Brain size={24} className="text-white" />
             </div>
             <div>
-              <span className="font-bold text-base text-foreground tracking-tight">Eval AI</span>
-              <span className="hidden sm:inline text-xs text-muted-foreground ml-2 font-mono">v2.0</span>
+              <span className="font-black text-[#0A0F1E] text-2xl tracking-tight leading-none block">Grade.ai</span>
+              <span className="text-[10px] font-bold text-orange-600 uppercase tracking-[0.25em]">KAM Global AI</span>
             </div>
-          </div>
+          </motion.div>
 
-          <nav className="hidden md:flex items-center gap-8">
-            {[['Features', '#features'], ['How It Works', '#how-it-works'], ['Roles', '#roles']].map(([label, href]) => (
-              <a key={label} href={href}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors tracking-tight">
-                {label}
-              </a>
+          <nav className="hidden lg:flex items-center gap-8">
+            {[
+              { label: 'Solutions', href: '#solutions' },
+              { label: 'Workflow',  href: '#workflow'  },
+              { label: 'Contact',   href: '#contact'   },
+            ].map((item, i) => (
+              <motion.a key={item.label} href={item.href}
+                initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.07 + 0.3 }}
+                className="text-sm font-semibold text-[#64748B] hover:text-[#0A0F1E] transition-colors relative group">
+                {item.label}
+                <span className="absolute -bottom-0.5 left-0 w-0 h-0.5 bg-orange-600 group-hover:w-full transition-all duration-300" />
+              </motion.a>
             ))}
           </nav>
 
-          <div className="hidden md:flex items-center gap-3">
-            <Link href="/login" className="text-sm font-semibold text-foreground hover:text-primary transition-colors px-4 py-2">
-              Sign In
-            </Link>
-            <Link href="/login"
-              className="text-sm font-bold text-white bg-gradient-to-r from-primary to-violet-600 px-5 py-2.5 rounded-xl shadow-sm hover:brightness-110 transition-all flex items-center gap-1.5 tracking-tight">
-              Get Started <ArrowRight size={14} />
-            </Link>
-          </div>
-
-          <button onClick={() => setMenuOpen(v => !v)} className="md:hidden p-2 rounded-lg hover:bg-muted">
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
-        </div>
-
-        {menuOpen && (
-          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-            className="md:hidden bg-white border-b border-border px-6 py-4 space-y-3">
-            {[['Features', '#features'], ['How It Works', '#how-it-works'], ['Roles', '#roles']].map(([label, href]) => (
-              <a key={label} href={href} onClick={() => setMenuOpen(false)}
-                className="block text-sm font-medium text-muted-foreground hover:text-foreground py-1.5">{label}</a>
-            ))}
-            <Link href="/login" onClick={() => setMenuOpen(false)}
-              className="block w-full text-center text-sm font-bold text-white bg-gradient-to-r from-primary to-violet-600 px-5 py-2.5 rounded-xl mt-2">
-              Get Started
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
+            <Link href="/login">
+              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-rose-500 hover:from-orange-500 hover:to-rose-400 text-white font-bold text-sm transition-all duration-300 shadow-lg shadow-orange-500/30">
+                Sign In →
+              </motion.button>
             </Link>
           </motion.div>
-        )}
+        </div>
       </header>
 
-      {/* ── Hero ───────────────────────────────────────────────────── */}
-      <section className="relative pt-32 pb-24 px-6 overflow-hidden bg-gradient-to-br from-[#F5F4FF] via-white to-[#EEF2FF]">
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
-            transition={{ duration: 8, repeat: Infinity }}
-            className="absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full bg-primary/8" />
-          <motion.div animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 10, repeat: Infinity, delay: 3 }}
-            className="absolute -bottom-32 -right-32 w-[500px] h-[500px] rounded-full bg-violet-500/8" />
-        </div>
+      {/* ── Hero ─────────────────────────────────────────────────── */}
+      <section ref={heroRef} className="relative pt-36 pb-20 px-12 overflow-hidden">
+        {/* large orange glow — top right */}
+        <div className="absolute top-0 right-0 w-[900px] h-[900px] bg-orange-500/20 blur-[130px] -z-10 rounded-full" />
+        {/* rose glow — bottom left */}
+        <div className="absolute bottom-0 left-0 w-[700px] h-[700px] bg-rose-500/15 blur-[110px] -z-10 rounded-full" />
+        {/* center orange halo behind heading */}
+        <div className="absolute top-1/3 left-1/4 w-[600px] h-[400px] bg-orange-400/12 blur-[100px] -z-10 rounded-full" />
+        {/* animated floating orbs */}
+        {[...Array(5)].map((_, i) => (
+          <motion.div key={i}
+            animate={{ y: [0, -50, 0], x: [0, 25, 0], rotate: [0, 180, 360], opacity: [0.12, 0.28, 0.12] }}
+            transition={{ duration: 12 + i * 3, repeat: Infinity, ease: 'linear', delay: i * 1.2 }}
+            className="absolute -z-10 bg-gradient-to-br from-orange-400 to-rose-500 rounded-full blur-2xl"
+            style={{ width: 100 + i * 40, height: 100 + i * 40, top: `${15 + i * 14}%`, left: `${5 + i * 18}%` }}
+          />
+        ))}
 
-        <div className="max-w-4xl mx-auto text-center relative z-10">
-          {/* KAM badge */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <span className="inline-flex items-center gap-2 text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-4 py-1.5 rounded-full mb-6 font-mono tracking-wide">
-              <Zap size={11} /> POWERED BY KAM GLOBAL AI
-            </span>
+        <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-28 items-center">
+          <motion.div style={{ y: heroY, opacity: heroOpacity }}>
+            <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6 }}
+              className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white border border-orange-100 shadow-md mb-8">
+              <motion.div animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}>
+                <Sparkles size={14} className="text-orange-600" />
+              </motion.div>
+              <span className="text-[10px] font-black text-orange-600 uppercase tracking-[0.4em]">Enterprise Intelligence Engine</span>
+            </motion.div>
+
+            <motion.h1 initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, type: 'spring' }}
+              className="text-7xl lg:text-8xl font-black text-[#0A0F1E] tracking-tighter leading-[0.85] mb-8">
+              Scale <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-rose-600 to-amber-500 animate-gradient-x">
+                Genius.
+              </span>
+            </motion.h1>
+
+            <motion.p initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.7, delay: 0.3 }}
+              className="text-lg text-[#64748B] leading-relaxed mb-10 max-w-xl">
+              The global benchmark for curriculum-aware AI assessment — built for CBSE, IB, Cambridge, and GCC education systems.
+            </motion.p>
+
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="flex flex-col sm:flex-row gap-4">
+              <Link href="/login">
+                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  className="px-8 py-4 rounded-2xl bg-[#0A0F1E] text-white font-black text-base hover:bg-orange-600 transition-colors duration-400 shadow-2xl flex items-center gap-3">
+                  Get Started <ArrowRight size={18} />
+                </motion.button>
+              </Link>
+              <a href="#solutions">
+                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  className="px-8 py-4 rounded-2xl bg-white border-2 border-slate-100 text-[#0A0F1E] font-bold text-base hover:border-orange-200 transition-colors">
+                  View Solutions
+                </motion.button>
+              </a>
+            </motion.div>
+
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}
+              className="mt-14 flex flex-wrap gap-10 border-t border-slate-100 pt-10">
+              {stats.map((s) => (
+                <motion.div key={s.label} whileHover={{ y: -4 }} className="cursor-default">
+                  <p className="text-4xl font-black text-[#0A0F1E] tracking-tight hover:text-orange-600 transition-colors">{s.value}</p>
+                  <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-[0.4em] mt-1">{s.label}</p>
+                </motion.div>
+              ))}
+            </motion.div>
           </motion.div>
 
-          <motion.h1 initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-5xl md:text-6xl xl:text-7xl font-bold text-foreground leading-tight tracking-tight mb-6">
-            Next-Gen Exam<br />
-            <span className="bg-gradient-to-r from-primary via-violet-500 to-cyan-500 bg-clip-text text-transparent">
-              Intelligence.
-            </span>
-          </motion.h1>
+          {/* Hero right — Dashboard Mockup */}
+          <motion.div initial={{ opacity: 0, x: 60, scale: 0.9 }} animate={{ opacity: 1, x: 0, scale: 1 }}
+            transition={{ duration: 1, type: 'spring', damping: 20 }}
+            className="relative hidden lg:block">
 
-          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-lg text-muted-foreground leading-relaxed mb-4 max-w-2xl mx-auto">
-            Eval AI automates the entire examination pipeline — OCR ingestion, AI scoring, diagram analysis, multilingual evaluation — delivering teacher-grade accuracy at machine speed.
-          </motion.p>
-          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.25 }}
-            className="text-sm font-mono text-primary/70 mb-10 tracking-wide">
-            ∟ Built on KAM Global AI infrastructure · GCC-ready · ISO 27001 certified
-          </motion.p>
+            {/* orange glow behind card */}
+            <div className="absolute inset-[-8%] bg-gradient-to-br from-orange-400/25 to-rose-400/15 blur-[80px] rounded-full -z-10" />
 
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/login"
-              className="flex items-center gap-2 text-base font-bold text-white bg-gradient-to-r from-primary to-violet-600 px-8 py-3.5 rounded-2xl shadow-lg hover:brightness-110 hover:-translate-y-0.5 transition-all tracking-tight">
-              Access Platform <ArrowRight size={18} />
-            </Link>
-            <a href="#features"
-              className="flex items-center gap-2 text-base font-semibold text-foreground border border-border bg-white px-8 py-3.5 rounded-2xl hover:bg-muted transition-colors tracking-tight">
-              Explore Modules <ChevronRight size={18} />
-            </a>
-          </motion.div>
+            {/* Admin Console — real screenshot */}
+            <motion.div whileHover={{ scale: 1.015, y: -4 }} transition={{ duration: 0.4, ease: 'easeOut' }}
+              className="relative rounded-[2rem] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.18)] ring-1 ring-white/60">
 
-          {/* Stats strip */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.45 }}
-            className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl mx-auto">
-            {stats.map(({ value, label }) => (
-              <div key={label} className="flex flex-col items-center">
-                <p className="text-3xl font-bold text-foreground font-mono tracking-tight">{value}</p>
-                <p className="text-[10px] font-mono text-primary/60 mt-1.5 tracking-widest uppercase">{label}</p>
+              {/* screenshot image */}
+              <img
+                src="/assets/images/admin%20dashboard.png"
+                alt="Grade.ai Admin Console"
+                className="w-full h-auto block"
+                style={{ maxHeight: 460, objectFit: 'cover', objectPosition: 'top' }}
+              />
+
+              {/* subtle glass overlay at bottom for fade */}
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white/40 to-transparent pointer-events-none" />
+
+              {/* live badge on top bar */}
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full shadow-sm border border-slate-100">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-[10px] font-black text-green-600 uppercase tracking-wider">Live Preview</span>
               </div>
-            ))}
+
+            </motion.div>
+
+            {/* Enterprise Ready badge */}
+            <motion.div animate={{ y: [-10, 10, -10] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute -top-6 -left-6 z-20 bg-white backdrop-blur-xl px-4 py-3 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white shadow-md">
+                  <CheckCircle2 size={18} />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-[#0A0F1E] leading-tight">Enterprise Ready</p>
+                  <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">SOC 2 Certified</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Real-time Sync badge — white with orange glow */}
+            <motion.div animate={{ y: [10, -10, 10] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+              className="absolute -bottom-6 -right-4 z-20 bg-white px-4 py-3 rounded-2xl border border-orange-200/60"
+              style={{ boxShadow: '0 0 0 1px rgba(234,88,12,0.15), 0 8px 32px rgba(234,88,12,0.20), 0 0 60px rgba(234,88,12,0.10)' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center text-white shadow-md shadow-orange-500/30">
+                  <Zap size={18} />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-[#0A0F1E] leading-tight">Real-time Sync</p>
+                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider">0.4ms Latency</p>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         </div>
       </section>
 
-      {/* ── Features ───────────────────────────────────────────────── */}
-      <section id="features" className="py-24 px-6 bg-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <span className="text-[10px] font-mono font-bold text-primary uppercase tracking-[0.25em]">// CORE_MODULES</span>
-            <h2 className="text-4xl font-bold text-foreground mt-3 mb-4 tracking-tight">Six AI-Native Modules</h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              End-to-end examination automation — from ingestion to result publication — on a single integrated platform.
-            </p>
-          </div>
+      {/* ── Student Analytics Showcase ───────────────────────────── */}
+      <section className="py-24 px-12 relative overflow-hidden bg-[#F8FAFF]">
+        {/* ambient glows */}
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-orange-400/10 blur-[130px] rounded-full pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-violet-400/8 blur-[110px] rounded-full pointer-events-none" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <motion.div key={f.title}
-                  initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }} transition={{ duration: 0.4, delay: i * 0.08 }}
-                  className={`bg-white border ${f.border} rounded-2xl p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1`}
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={`w-12 h-12 rounded-2xl ${f.bg} flex items-center justify-center`}>
-                      <Icon size={22} className={f.color} />
-                    </div>
-                    <span className={`text-[10px] font-mono font-bold tracking-widest ${f.color} opacity-60`}>{f.tag}</span>
+        <div className="max-w-[1600px] mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
+
+          {/* LEFT — mockup first on dark bg */}
+          <motion.div initial={{ opacity: 0, x: -50, scale: 0.94 }} whileInView={{ opacity: 1, x: 0, scale: 1 }}
+            viewport={{ once: true }} transition={{ duration: 0.9, type: 'spring', damping: 22 }}
+            className="relative order-2 lg:order-1">
+
+            {/* glow ring behind mockup */}
+            <div className="absolute inset-[-8%] bg-gradient-to-br from-orange-500/20 to-violet-500/10 blur-[90px] rounded-full -z-10" />
+
+            {/* real screenshot */}
+            <div className="rounded-[2rem] overflow-hidden border border-slate-200/70 shadow-[0_32px_80px_rgba(0,0,0,0.10)]">
+              <img
+                src="/assets/images/Student%20performance%20dashboard.png"
+                alt="Student Performance Dashboard"
+                className="w-full h-auto block"
+                style={{ maxHeight: 460, objectFit: 'cover', objectPosition: 'top' }}
+              />
+            </div>
+
+            {/* floating stat chip */}
+            <motion.div animate={{ y: [-8, 8, -8] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute -bottom-5 -left-5 z-20 bg-white px-4 py-3 rounded-2xl border border-slate-100 shadow-[0_8px_32px_rgba(0,0,0,0.10)]">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                  <Star size={14} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-black text-[#0A0F1E] leading-none">Class Rank #4</p>
+                  <p className="text-[10px] font-bold text-orange-500 mt-0.5">Top 10% overall</p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+
+          {/* RIGHT — text on dark bg */}
+          <motion.div initial={{ opacity: 0, x: 50 }} whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }} transition={{ duration: 0.7, delay: 0.1 }}
+            className="order-1 lg:order-2">
+
+            <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
+              className="text-orange-600 font-black text-xs uppercase tracking-[0.6em] mb-4">
+              Student Intelligence
+            </motion.p>
+            <h2 className="text-5xl lg:text-6xl font-black text-[#0A0F1E] tracking-tighter leading-tight mb-6">
+              AI-Powered<br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-rose-500 to-amber-500">
+                Performance
+              </span><br />
+              Analytics.
+            </h2>
+            <p className="text-base text-[#64748B] leading-relaxed mb-10 max-w-lg">
+              Every student gets a live performance dashboard — score progression, AI-driven strength/weakness insights, and subject-level breakdowns after every evaluation.
+            </p>
+
+            <div className="space-y-5">
+              {[
+                { label: 'Score Progression',    desc: 'Track improvement across every exam in real time',         color: '#EA580C' },
+                { label: 'AI Learning Insights', desc: 'Know your strongest and weakest topic areas instantly',     color: '#10B981' },
+                { label: 'Class Benchmarking',   desc: 'See where you stand vs class average per question',        color: '#1A6BFF' },
+              ].map((f, i) => (
+                <motion.div key={f.label} initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }} transition={{ delay: i * 0.12 + 0.3 }}
+                  className="flex items-start gap-4 group">
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 transition-all duration-300 group-hover:scale-110"
+                    style={{ backgroundColor: `${f.color}18` }}>
+                    <CheckCircle2 size={18} style={{ color: f.color }} />
                   </div>
-                  <h3 className="font-bold text-foreground text-base mb-2 tracking-tight">{f.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">{f.desc}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {f.chips.map(c => (
-                      <span key={c} className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-md ${f.bg} ${f.color} tracking-wide`}>{c}</span>
-                    ))}
+                  <div>
+                    <p className="font-black text-[#0A0F1E] text-sm">{f.label}</p>
+                    <p className="text-sm text-[#64748B] mt-0.5">{f.desc}</p>
                   </div>
                 </motion.div>
-              );
-            })}
+              ))}
+            </div>
+
+            <motion.div initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }} transition={{ delay: 0.6 }}
+              className="mt-10">
+              <Link href="/login">
+                <motion.button whileHover={{ scale: 1.04, x: 4 }} whileTap={{ scale: 0.97 }}
+                  className="flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-orange-600 to-rose-500 text-white font-black text-sm shadow-xl shadow-orange-600/30 hover:shadow-orange-600/50 transition-all">
+                  View Student Portal <ArrowRight size={16} />
+                </motion.button>
+              </Link>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ── Solutions Grid ────────────────────────────────────────── */}
+      <section id="solutions" className="py-28 px-8 bg-[#F8FAFF] relative overflow-hidden">
+        <div className="absolute top-0 right-0 text-[18rem] font-black text-[#0A0F1E]/[0.015] select-none pointer-events-none tracking-tighter leading-none">CORE</div>
+        <div className="absolute top-0 right-0 w-[700px] h-[700px] bg-orange-400/10 blur-[140px] pointer-events-none rounded-full" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-rose-400/8 blur-[120px] pointer-events-none rounded-full" />
+
+        <div className="max-w-[1600px] mx-auto relative z-10">
+          <div className="mb-14">
+            <motion.p initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }}
+              className="text-orange-600 font-black text-xs uppercase tracking-[0.6em] mb-4">
+              Integrated Ecosystem
+            </motion.p>
+            <motion.h2 initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }}
+              className="text-5xl lg:text-6xl font-black text-[#0A0F1E] tracking-tighter leading-tight mb-4">
+              Next-Gen <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-rose-600">Solutions.</span>
+            </motion.h2>
+            <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }}
+              className="text-base text-[#64748B] max-w-xl">
+              Six core AI pillars powering the world's most advanced assessment platform.
+            </motion.p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {features.map((f, i) => <FeatureCard key={f.title} f={f} i={i} />)}
           </div>
         </div>
       </section>
 
-      {/* ── How It Works ───────────────────────────────────────────── */}
-      <section id="how-it-works" className="py-24 px-6 bg-[#F5F4FF]">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-14">
-            <span className="text-[10px] font-mono font-bold text-primary uppercase tracking-[0.25em]">// PIPELINE_OVERVIEW</span>
-            <h2 className="text-4xl font-bold text-foreground mt-3 mb-4 tracking-tight">Evaluation Pipeline</h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              Four-stage automated pipeline from raw submission to published result — fully auditable at every step.
-            </p>
+      {/* ── Workflow ──────────────────────────────────────────────── */}
+      <section id="workflow" className="py-28 px-12 relative overflow-hidden bg-white">
+        {/* soft ambient blobs */}
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-orange-100/60 blur-[140px] pointer-events-none rounded-full" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-violet-100/50 blur-[120px] pointer-events-none rounded-full" />
+
+        <div className="max-w-[1600px] mx-auto relative z-10">
+
+          {/* heading */}
+          <div className="text-center mb-20">
+            <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }}
+              className="text-orange-600 font-black text-xs uppercase tracking-[0.6em] mb-4">
+              The Engine Room
+            </motion.p>
+            <motion.h2 initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="text-5xl lg:text-6xl font-black text-[#0A0F1E] tracking-tighter leading-tight">
+              How It <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-rose-600">Works.</span>
+            </motion.h2>
+            <motion.p initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} transition={{ delay: 0.2 }}
+              className="mt-4 text-base text-[#64748B] max-w-lg mx-auto">
+              Four seamless steps from submission to published results — all powered by AI.
+            </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
-            <div className="hidden lg:block absolute top-8 left-[calc(12.5%+24px)] right-[calc(12.5%+24px)] h-0.5 bg-gradient-to-r from-primary/20 via-primary/60 to-primary/20" />
+          {/* 4-step horizontal pipeline */}
+          <div className="relative flex items-stretch justify-between">
+
+            {/* full-width SVG connector track */}
+            <svg
+              className="absolute top-[44px] left-0 w-full h-[2px] pointer-events-none"
+              style={{ overflow: 'visible' }}
+            >
+              <defs>
+                <linearGradient id="flowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%"   stopColor="#EA580C" />
+                  <stop offset="33%"  stopColor="#7C3AED" />
+                  <stop offset="66%"  stopColor="#059669" />
+                  <stop offset="100%" stopColor="#1A6BFF" />
+                </linearGradient>
+              </defs>
+              {/* track line */}
+              <motion.line
+                x1="12.5%" y1="1" x2="87.5%" y2="1"
+                stroke="url(#flowGrad)" strokeWidth="2.5"
+                initial={{ pathLength: 0, opacity: 0 }}
+                whileInView={{ pathLength: 1, opacity: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 1.4, ease: 'easeInOut' }}
+              />
+              {/* animated traveling dot */}
+              {[0, 1].map((n) => (
+                <motion.circle key={n} r="5" fill="url(#flowGrad)"
+                  animate={{ x: ['12.5%', '87.5%'], opacity: [0, 1, 1, 0] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'linear', delay: n * 1.5 }}
+                />
+              ))}
+              {/* arrow heads between steps */}
+              {[33, 56.5, 79].map((pct, ai) => {
+                const arrowColors = ['#7C3AED', '#059669', '#1A6BFF'];
+                return (
+                  <motion.polygon key={ai}
+                    points={`${pct - 0.8}%,-5 ${pct + 0.8}%,1 ${pct - 0.8}%,7`}
+                    fill={arrowColors[ai]}
+                    initial={{ opacity: 0, scaleX: 0 }}
+                    whileInView={{ opacity: 1, scaleX: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.8 + ai * 0.2, duration: 0.3 }}
+                  />
+                );
+              })}
+            </svg>
+
             {workflow.map((w, i) => {
               const Icon = w.icon;
+              const colors = ['#EA580C', '#7C3AED', '#059669', '#1A6BFF'];
+              const c = colors[i];
               return (
                 <motion.div key={w.step}
-                  initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }} transition={{ duration: 0.4, delay: i * 0.1 }}
-                  className="relative flex flex-col items-center text-center"
+                  initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.15, duration: 0.5 }}
+                  whileHover={{ y: -6 }}
+                  className="relative flex flex-col items-center text-center flex-1 px-6 pt-2 pb-8 group cursor-default"
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center mb-4 shadow-lg relative z-10">
-                    <Icon size={22} className="text-white" />
-                  </div>
-                  <span className="text-[10px] font-mono text-primary/60 tracking-[0.2em] mb-1">{w.step}</span>
-                  <h3 className="font-bold text-foreground mb-2 font-mono tracking-wide">{w.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{w.desc}</p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Roles ──────────────────────────────────────────────────── */}
-      <section id="roles" className="py-24 px-6 bg-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <span className="text-[10px] font-mono font-bold text-primary uppercase tracking-[0.25em]">// ACCESS_ROLES</span>
-            <h2 className="text-4xl font-bold text-foreground mt-3 mb-4 tracking-tight">Three Distinct Portals</h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              Role-scoped access with dedicated UI/UX for each stakeholder — zero privilege overlap.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {roles.map((r, i) => {
-              const Icon = r.icon;
-              return (
-                <motion.div key={r.title}
-                  initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }} transition={{ duration: 0.4, delay: i * 0.12 }}
-                  className="rounded-3xl overflow-hidden border border-border shadow-sm hover:shadow-xl transition-all duration-300"
-                >
-                  <div className={`bg-gradient-to-br ${r.bg} p-8 text-white`}>
-                    <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-white/60 block mb-3">{r.label}</span>
-                    <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center mb-4">
-                      <Icon size={24} className="text-white" />
+                  {/* node icon */}
+                  <div className="relative z-10 mb-6">
+                    <motion.div
+                      whileHover={{ scale: 1.12 }}
+                      transition={{ type: 'spring', stiffness: 400 }}
+                      className="w-[88px] h-[88px] rounded-[24px] flex items-center justify-center border-2 bg-white transition-all duration-300"
+                      style={{
+                        borderColor: `${c}40`,
+                        boxShadow: `0 0 0 6px ${c}10, 0 12px 32px ${c}20`,
+                      }}
+                    >
+                      <Icon size={32} style={{ color: c }} />
+                    </motion.div>
+                    {/* step badge */}
+                    <div
+                      className="absolute -top-2.5 -right-2.5 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white shadow-lg"
+                      style={{ backgroundColor: c }}
+                    >
+                      {i + 1}
                     </div>
-                    <h3 className="text-xl font-bold mb-2 tracking-tight">{r.title}</h3>
-                    <p className="text-white/75 text-sm leading-relaxed">{r.desc}</p>
                   </div>
-                  <div className="bg-white p-6">
-                    <ul className="space-y-3 mb-6">
-                      {r.points.map(pt => (
-                        <li key={pt} className="flex items-start gap-3">
-                          <CheckCircle2 size={15} className="text-green-500 shrink-0 mt-0.5" />
-                          <span className="text-sm text-foreground">{pt}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Link href={r.href}
-                      className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-primary/20 text-primary text-sm font-bold hover:bg-primary hover:text-white hover:border-primary transition-all tracking-tight">
-                      {r.cta} <ArrowRight size={14} />
-                    </Link>
-                  </div>
+
+                  {/* card body */}
+                  <motion.div
+                    whileHover={{ boxShadow: `0 16px 48px ${c}18` }}
+                    className="w-full bg-white border border-slate-100 rounded-3xl px-5 py-6 transition-all duration-300 group-hover:border-transparent"
+                    style={{ boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}
+                  >
+                    <h4 className="text-lg font-black mb-2 tracking-tight" style={{ color: c }}>{w.title}</h4>
+                    <p className="text-sm text-[#64748B] leading-relaxed">{w.desc}</p>
+                  </motion.div>
                 </motion.div>
               );
             })}
           </div>
+
         </div>
       </section>
 
-      {/* ── CTA Banner ─────────────────────────────────────────────── */}
-      <section className="py-24 px-6 bg-gradient-to-br from-primary via-indigo-600 to-violet-700 relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.25, 0.15] }}
-            transition={{ duration: 8, repeat: Infinity }}
-            className="absolute -top-20 -left-20 w-80 h-80 rounded-full bg-white/10" />
-          <motion.div animate={{ scale: [1, 1.15, 1], opacity: [0.1, 0.2, 0.1] }}
-            transition={{ duration: 10, repeat: Infinity, delay: 3 }}
-            className="absolute -bottom-20 -right-20 w-96 h-96 rounded-full bg-white/10" />
-        </div>
-        <div className="max-w-3xl mx-auto text-center relative z-10">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <span className="text-[10px] font-mono font-bold text-white/50 tracking-[0.25em] block mb-6">// DEPLOY_EVAL_AI</span>
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-5 tracking-tight">
-              Ready to deploy<br />intelligent grading?
-            </h2>
-            <p className="text-white/70 text-base mb-4 max-w-xl mx-auto leading-relaxed">
-              Join institutions across the GCC and beyond already running Eval AI — powered by KAM Global AI's enterprise infrastructure.
-            </p>
-            <p className="text-white/40 text-xs font-mono tracking-widest mb-10">
-              ISO_27001 · SOC_2 · GDPR · ZATCA · 22+ YRS WORKFORCE EXCELLENCE
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/login"
-                className="flex items-center justify-center gap-2 text-base font-bold text-primary bg-white px-8 py-3.5 rounded-2xl shadow-lg hover:brightness-105 hover:-translate-y-0.5 transition-all tracking-tight">
-                Access Platform <ArrowRight size={18} />
-              </Link>
-              <Link href="/login"
-                className="flex items-center justify-center gap-2 text-base font-semibold text-white border-2 border-white/40 px-8 py-3.5 rounded-2xl hover:bg-white/10 transition-colors tracking-tight">
-                Sign In
-              </Link>
+      {/* ── Footer ───────────────────────────────────────────────── */}
+      <footer id="contact" className="bg-[#0A0F1E] border-t border-white/5">
+        {/* top cta strip */}
+        <div className="border-b border-white/5 py-14 px-8">
+          <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row items-center justify-between gap-8">
+            <div>
+              <h3 className="text-2xl font-black text-white tracking-tight mb-1">Ready to transform your institution?</h3>
+              <p className="text-sm text-white/40">Join 500+ schools and universities worldwide.</p>
             </div>
-          </motion.div>
+            <div className="flex items-center gap-3 shrink-0">
+              <a href="mailto:info@kamglobalai.com" className="text-sm font-bold text-white/60 hover:text-white transition-colors">
+                info@kamglobalai.com
+              </a>
+            </div>
+          </div>
         </div>
-      </section>
 
-      {/* ── Footer ─────────────────────────────────────────────────── */}
-      <footer className="bg-[#0F0B2D] text-white/60 pt-16 pb-8 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-white/10">
+        {/* main footer grid */}
+        <div className="px-8 py-16">
+          <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12">
 
-            {/* Brand */}
-            <div className="lg:col-span-2 space-y-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow">
-                  <Brain size={20} className="text-white" />
+            {/* brand col */}
+            <div className="lg:col-span-4">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-600 to-rose-600 flex items-center justify-center shadow-lg shadow-orange-600/30">
+                  <Brain size={18} className="text-white" />
                 </div>
                 <div>
-                  <p className="font-bold text-white text-base leading-tight tracking-tight">Eval AI</p>
-                  <p className="text-[10px] font-mono text-white/40 leading-tight tracking-widest">PART OF KAM GLOBAL AI</p>
+                  <span className="font-black text-white text-lg tracking-tight leading-none block">Grade.ai</span>
+                  <span className="text-[9px] font-bold text-orange-500 uppercase tracking-[0.25em]">by KAM Global AI</span>
                 </div>
               </div>
-
-              <p className="text-sm text-white/55 leading-relaxed max-w-xs">
-                AI-native examination platform. OCR ingestion → LLM scoring → multilingual evaluation → result publication — fully automated, fully auditable.
+              <p className="text-sm text-white/40 leading-relaxed mb-6 max-w-xs">
+                The enterprise-grade AI examination platform redefining academic assessment for the modern world.
               </p>
 
-              <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                <Globe size={13} className="text-white/60 shrink-0" />
+              {/* trust badges */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {[
+                  { icon: ShieldCheck, label: 'SOC 2 Type II' },
+                  { icon: Lock,        label: 'ISO 27001' },
+                  { icon: Globe,       label: 'GDPR Ready' },
+                ].map(({ icon: Icon, label }) => (
+                  <span key={label} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/50">
+                    <Icon size={10} className="text-orange-500" /> {label}
+                  </span>
+                ))}
+              </div>
+
+              {/* social */}
+              <div className="flex items-center gap-2">
+                {[
+                  { label: 'X', path: 'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z' },
+                  { label: 'LinkedIn', path: 'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z' },
+                  { label: 'YouTube', path: 'M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z' },
+                ].map(({ label, path }) => (
+                  <motion.button key={label} whileHover={{ scale: 1.15, y: -2 }} whileTap={{ scale: 0.9 }}
+                    aria-label={label}
+                    className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-orange-500 hover:border-orange-500/30 hover:bg-orange-500/10 transition-all">
+                    <svg viewBox="0 0 24 24" width={14} height={14} fill="currentColor">
+                      <path d={path} />
+                    </svg>
+                  </motion.button>
+                ))}
+              </div>
+            </div>
+
+            {/* link columns */}
+            {footerLinks.map((col) => (
+              <div key={col.heading} className="lg:col-span-2">
+                <h5 className="text-[10px] font-black text-white/30 uppercase tracking-[0.35em] mb-4">{col.heading}</h5>
+                <ul className="space-y-2.5">
+                  {col.links.map((link) => (
+                    <li key={link}>
+                      <a href="#" className="text-sm text-white/50 hover:text-white transition-colors font-medium">{link}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+            {/* contact col */}
+            <div className="lg:col-span-2">
+              <h5 className="text-[10px] font-black text-white/30 uppercase tracking-[0.35em] mb-4">Contact</h5>
+              <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-semibold text-white/80 tracking-tight">KAM International Group</p>
-                  <p className="text-[10px] font-mono text-white/40 tracking-wide">22+ YRS · GCC · 6 COUNTRIES · KUWAIT HQ</p>
+                  <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider mb-1">India</p>
+                  <p className="text-xs text-white/50 leading-relaxed">No 544, 3rd cross, RT Nagar, Bangalore-560032</p>
+                  <p className="text-xs text-white/40 mt-1">+91 80507 66363</p>
+                  <p className="text-xs text-white/40">info@kamglobalai.com</p>
+                </div>
+                <div className="border-t border-white/5 pt-4">
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Kuwait HQ</p>
+                  <p className="text-xs text-white/50 leading-relaxed">20408 Tunisia St, Hawally, Kuwait</p>
+                  <p className="text-xs text-white/40 mt-1">+965 22087764</p>
+                  <p className="text-xs text-white/40">info@kamgroups.com</p>
                 </div>
               </div>
-
-              <div className="flex items-center gap-3 pt-1">
-                {[
-                  { label: 'Website', href: 'https://kamglobalai.com', svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
-                  { label: 'Email', href: 'mailto:info@kamglobalai.com', svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> },
-                  { label: 'Phone', href: 'tel:+96500000000', svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6.09 6.09l.94-.94a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> },
-                ].map(s => (
-                  <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" title={s.label}
-                    className="w-8 h-8 rounded-lg bg-white/8 hover:bg-white/15 flex items-center justify-center text-white/50 hover:text-white transition-all">
-                    {s.svg}
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            {/* Platform */}
-            <div>
-              <p className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-[0.2em] mb-5">Platform</p>
-              <ul className="space-y-3">
-                {['Answer Evaluator', 'Paper Analyzer', 'Answer Generator', 'Diagram Analyzer', 'Multilingual Engine', 'Student Upload'].map(item => (
-                  <li key={item}>
-                    <Link href="/login" className="text-sm text-white/50 hover:text-white transition-colors">{item}</Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Company */}
-            <div>
-              <p className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-[0.2em] mb-5">Company</p>
-              <ul className="space-y-3">
-                {[{ l: 'About Us', h: '/login' }, { l: 'KAM Group', h: 'https://kamglobalai.com' }, { l: 'Careers', h: '/login' }, { l: 'Blog', h: '/login' }, { l: 'Contact', h: '/login' }].map(item => (
-                  <li key={item.l}>
-                    <a href={item.h} target={item.h.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer"
-                      className="text-sm text-white/50 hover:text-white transition-colors">{item.l}</a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Support */}
-            <div>
-              <p className="text-[10px] font-mono font-bold text-white/40 uppercase tracking-[0.2em] mb-5">Support</p>
-              <ul className="space-y-3">
-                {['Documentation', 'API Reference', 'Status', 'Privacy Policy', 'Terms of Service'].map(item => (
-                  <li key={item}>
-                    <Link href="/login" className="text-sm text-white/50 hover:text-white transition-colors">{item}</Link>
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
+        </div>
 
-          {/* Bottom bar */}
-          <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-6">
-            <p className="text-xs font-mono text-white/30 text-center md:text-left tracking-wide">
-              © 2024 KAM Global AI, part of KAM International Group. All rights reserved.
-            </p>
-            <div className="flex items-center gap-2 flex-wrap justify-center">
-              {compliance.map(badge => (
-                <span key={badge}
-                  className="text-[10px] font-mono font-bold text-white/50 border border-white/15 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 hover:text-white/80 transition-colors cursor-default tracking-widest">
-                  {badge}
-                </span>
+        {/* bottom bar */}
+        <div className="border-t border-white/5 px-8 py-5">
+          <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" />
+              <span className="text-[10px] font-bold text-green-500 uppercase tracking-[0.4em]">All Systems Operational</span>
+            </div>
+            <p className="text-[11px] text-white/25 font-medium">© 2025 KAM Global AI. All rights reserved.</p>
+            <div className="flex items-center gap-5">
+              {['Privacy Policy', 'Terms of Service', 'Security'].map((link) => (
+                <a key={link} href="#" className="text-[11px] text-white/30 hover:text-white/60 transition-colors font-medium">{link}</a>
               ))}
             </div>
           </div>
         </div>
       </footer>
+
+      <style jsx global>{`
+        @keyframes gradient-x {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        .animate-gradient-x { background-size: 200% 200%; animation: gradient-x 6s ease infinite; }
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 0.15; transform: scale(1); }
+          50% { opacity: 0.25; transform: scale(1.08); }
+        }
+        .animate-pulse-slow { animation: pulse-slow 10s ease-in-out infinite; }
+        @keyframes spin-slow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .animate-spin-slow { animation: spin-slow 18s linear infinite; }
+      `}</style>
     </div>
   );
 }

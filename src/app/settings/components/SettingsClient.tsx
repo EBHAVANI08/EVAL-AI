@@ -54,10 +54,10 @@ const DEFAULT_SETTINGS: Settings = {
 
 const TABS = [
   { id: 'institution', label: 'Institution', icon: Building2 },
-  { id: 'grading', label: 'Grading', icon: GraduationCap },
-  { id: 'ai', label: 'AI & API', icon: Brain },
-  { id: 'evaluation', label: 'Evaluation', icon: ClipboardCheck },
-  { id: 'data', label: 'Data & Export', icon: Database },
+  { id: 'grading',     label: 'Grading',     icon: GraduationCap },
+  { id: 'ai',          label: 'AI & API',    icon: Brain },
+  { id: 'evaluation',  label: 'Evaluation',  icon: ClipboardCheck },
+  { id: 'data',        label: 'Data & Export', icon: Database },
 ];
 
 const BOARDS = ['CBSE', 'ICSE', 'State Board', 'IB', 'IGCSE'];
@@ -79,7 +79,6 @@ export default function SettingsClient() {
       .then((data) => { setSettings({ ...DEFAULT_SETTINGS, ...data }); })
       .catch(() => {})
       .finally(() => setLoading(false));
-    // Load API key from env display (masked)
     setApiKey('');
   }, []);
 
