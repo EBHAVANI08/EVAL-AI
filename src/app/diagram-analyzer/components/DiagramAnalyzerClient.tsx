@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ScanLine, Upload, X, Brain, CheckCircle2, AlertCircle, Loader2, Target, History, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { callGeminiVision } from '@/lib/gemini-client';
 
 type Result = {
   score: number;
@@ -96,20 +97,8 @@ Return ONLY valid JSON (no markdown fences):
   "feedback": "Overall feedback paragraph for the student"
 }`;
 
-      const res = await fetch('/api/ai/gemini-vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mimeType: image.type, base64Data: base64, prompt }),
-      });
-
-      if (!res.ok) {
-        const e = await res.json();
-        throw new Error(e.error || 'Analysis failed');
-      }
-
-      const data = await res.json();
-      let text = data.text || '';
-      text = text.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const { text: rawText } = await callGeminiVision({ mimeType: image.type, base64Data: base64, prompt });
+      let text = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
 
       let parsed: Result;
       try {

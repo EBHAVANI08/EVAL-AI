@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lightbulb, Sparkles, Copy, CheckCircle2, Loader2, BookOpen, Clock, Target, ChevronRight, History, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { callGeminiText } from '@/lib/gemini-client';
 
 // Simple markdown renderer — handles ##, **, *, numbered lists, line breaks
 function renderMarkdown(text: string) {
@@ -126,14 +127,56 @@ export default function AnswerGeneratorClient() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch('/api/ai/generate-answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, subject, class: cls, board, marks: Number(marks), style, language }),
-      });
-      if (res.status === 429) { toast.error('Rate limit reached. Please wait 30-60 seconds and try again.'); return; }
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
-      const data = await res.json();
+      const prompt = `You are an expert ${board || 'CBSE'} teacher writing model answers for students.
+
+Generate a detailed, well-structured model answer for the following question.
+
+Question: ${question}
+Subject: ${subject || 'General'}
+Class: ${cls || 'Unknown'}
+Marks: ${marks || 'Not specified'}
+Answer Style: ${style || 'CBSE Standard (Points)'}
+Language: ${language || 'English'}
+
+Requirements:
+- Write a complete, exam-ready model answer
+- Use clear headings and numbered points where appropriate
+- Include ALL key points needed for full marks
+- For diagram questions or "Diagram + Notes" style: describe the diagram in a clearly labeled section with all parts, arrows, and labels listed as bullet points (do NOT use ASCII art)
+- Match detail level to marks weightage
+- Follow ${board || 'CBSE'} conventions for answer writing
+- For numerical questions, show complete step-by-step working
+- Write in ${language || 'English'}
+
+Return ONLY valid JSON (no markdown fences) in this exact format:
+{
+  "modelAnswer": "The complete formatted model answer text with proper structure",
+  "keyPoints": ["Key point 1 that must be mentioned", "Key point 2", "Key point 3"],
+  "markingScheme": [
+    {"point": "What earns marks here", "marks": 1}
+  ],
+  "tips": "Exam tips for writing this answer effectively",
+  "estimatedTime": "X minutes"
+}`;
+
+      let text = await callGeminiText(prompt, { temperature: 0.3, maxOutputTokens: 8192 });
+      text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try { data = JSON.parse(jsonMatch[0]); } catch { data = null; }
+        }
+        if (!data) {
+          data = { modelAnswer: text, keyPoints: [], markingScheme: [], tips: '', estimatedTime: '' };
+        }
+      }
+      if (data.modelAnswer && typeof data.modelAnswer === 'object') {
+        data.modelAnswer = JSON.stringify(data.modelAnswer, null, 2);
+      }
       setResult(data);
 
       // Auto-save to MongoDB

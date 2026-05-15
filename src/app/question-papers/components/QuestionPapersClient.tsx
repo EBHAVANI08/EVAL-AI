@@ -7,6 +7,7 @@ import {
   Loader2, Upload, X, FileText, ExternalLink,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { callGeminiVision } from '@/lib/gemini-client';
 
 type Paper = {
   id: string;
@@ -133,16 +134,8 @@ Return ONLY valid JSON (no markdown fences):
   ]
 }`;
 
-      const res = await fetch('/api/ai/gemini-vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, prompt }),
-      });
-
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Extraction failed'); }
-
-      const data = await res.json();
-      let text = (data.text || '').replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const { text: rawText } = await callGeminiVision({ ...payload, prompt });
+      let text = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
       const parsed = JSON.parse(text);
 
       if (!uploadSubject && parsed.subject) setUploadSubject(parsed.subject);

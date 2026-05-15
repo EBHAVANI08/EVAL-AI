@@ -101,7 +101,7 @@ async function compressImage(file: File): Promise<string> {
   });
 }
 
-async function uploadPdfToGemini(file: File): Promise<{ fileUri: string; mimeType: string }> {
+async function uploadPdfToGemini(file: File): Promise<{ base64Data: string; mimeType: string }> {
   const formData = new FormData();
   formData.append('file', file);
   const res = await fetch('/api/ai/gemini-upload', { method: 'POST', body: formData });
@@ -247,11 +247,11 @@ export default function EvaluatorWorkspace() {
     setAnswerFile(f);
   };
 
-  // Build vision payload for a file (shared between streaming + fallback)
+  // Build vision payload for a file
   const buildVisionPayload = async (file: File): Promise<Record<string, string>> => {
     if (file.type === 'application/pdf') {
-      const { fileUri, mimeType } = await uploadPdfToGemini(file);
-      return { fileUri, mimeType };
+      const { base64Data, mimeType } = await uploadPdfToGemini(file);
+      return { base64Data, mimeType };
     }
     const dataUri = await compressImage(file);
     const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);
@@ -259,63 +259,56 @@ export default function EvaluatorWorkspace() {
     return { mimeType: match[1], base64Data: match[2] };
   };
 
-  // Stream evaluation — yields raw question objects one by one as Gemini responds
-  const streamEvaluatePage = async (
+  // Evaluate a page by calling Gemini directly from the browser
+  const evaluatePage = async (
     visionPayload: Record<string, string>,
     prompt: string,
     onQuestion: (q: any) => void
   ): Promise<void> => {
-    const res = await fetch('/api/ai/gemini-stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...visionPayload, prompt }),
-    });
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) throw new Error('Gemini API key not configured');
 
-    if (!res.ok || !res.body) {
+    const filePart = visionPayload.fileUri
+      ? { file_data: { mime_type: visionPayload.mimeType || 'application/pdf', file_uri: visionPayload.fileUri } }
+      : { inline_data: { mime_type: visionPayload.mimeType, data: visionPayload.base64Data } };
+
+    const body = {
+      contents: [{ parts: [{ text: prompt }, filePart] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
+    };
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    );
+
+    if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new Error(`Stream failed (${res.status}): ${errText}`);
+      throw new Error(`Gemini error (${res.status}): ${errText.slice(0, 200)}`);
     }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let sseBuffer = '';
-    let accumulated = '';
-    let parsePos = 0;
+    const data = await res.json();
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const finishReason: string = data.candidates?.[0]?.finishReason ?? 'STOP';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      sseBuffer += decoder.decode(value, { stream: true });
-      const lines = sseBuffer.split('\n');
-      sseBuffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') break;
-
-        try {
-          const chunk = JSON.parse(data);
-          const text: string = chunk.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-          if (!text) continue;
-          accumulated += text;
-
-          // Try to extract complete JSON objects from accumulated text
-          const { objects, newPos } = extractCompleteObjects(accumulated, parsePos);
-          parsePos = newPos;
-          for (const obj of objects) {
-            onQuestion(obj);
-          }
-        } catch { /* skip malformed SSE chunk */ }
-      }
+    if (!text) throw new Error('Gemini returned an empty response.');
+    if (finishReason === 'MAX_TOKENS') {
+      toast.error('AI response was cut off — some questions may be missing.');
     }
 
-    // Final pass — extract anything remaining after stream ends
-    const { objects } = extractCompleteObjects(accumulated, parsePos);
-    for (const obj of objects) {
-      onQuestion(obj);
+    // Try parsing as full JSON array first
+    const arrStart = text.indexOf('[');
+    const arrEnd = text.lastIndexOf(']');
+    if (arrStart !== -1 && arrEnd !== -1) {
+      try {
+        const arr = JSON.parse(text.slice(arrStart, arrEnd + 1).replace(/,\s*([}\]])/g, '$1'));
+        if (Array.isArray(arr)) { for (const obj of arr) onQuestion(obj); return; }
+      } catch { /* fall through to object extraction */ }
     }
+
+    // Extract individual JSON objects from text
+    const { objects } = extractCompleteObjects(text, 0);
+    for (const obj of objects) onQuestion(obj);
   };
 
   const handleEvaluate = async (directFiles?: File[], directDataUrls?: string[]) => {
@@ -506,7 +499,7 @@ Output the JSON array now:`;
 
         const visionPayload = await buildVisionPayload(filesToProcess[pageIdx]);
 
-        await streamEvaluatePage(visionPayload, prompt, (rawQ) => {
+        await evaluatePage(visionPayload, prompt, (rawQ) => {
           allRawQuestions.push(rawQ);
           const liveQ = buildLiveQuestion(rawQ, globalIdx++);
           setLiveQuestions((prev) => [...prev, liveQ]);

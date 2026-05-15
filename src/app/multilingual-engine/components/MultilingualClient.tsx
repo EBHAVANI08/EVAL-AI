@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Languages, Upload, X, Zap, Loader2, Globe, FileText, CheckCircle2, AlertCircle, History, ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { callGeminiVision } from '@/lib/gemini-client';
 
 type Result = {
   detectedLanguage: string;
@@ -123,10 +124,9 @@ Return ONLY valid JSON (no markdown fences):
   "feedbackInNativeLanguage": "Same feedback translated to the student's language (if not English)"
 }`;
 
-      let visionPayload: object;
+      let filePayload: { base64Data: string; mimeType: string };
 
       if (inputMode === 'pdf' && pdfFile) {
-        // Upload PDF to Gemini Files API first
         const formData = new FormData();
         formData.append('file', pdfFile);
         const uploadRes = await fetch('/api/ai/gemini-upload', { method: 'POST', body: formData });
@@ -134,8 +134,7 @@ Return ONLY valid JSON (no markdown fences):
           const e = await uploadRes.json().catch(() => ({ error: 'PDF upload failed' }));
           throw new Error(e.error || 'PDF upload failed');
         }
-        const { base64Data, mimeType } = await uploadRes.json();
-        visionPayload = { base64Data, mimeType, prompt };
+        filePayload = await uploadRes.json();
       } else {
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -143,19 +142,11 @@ Return ONLY valid JSON (no markdown fences):
           reader.onerror = reject;
           reader.readAsDataURL(image!);
         });
-        visionPayload = { mimeType: image!.type, base64Data: base64, prompt };
+        filePayload = { mimeType: image!.type, base64Data: base64 };
       }
 
-      const res = await fetch('/api/ai/gemini-vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(visionPayload),
-      });
-
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed'); }
-
-      const data = await res.json();
-      let text = (data.text || '').replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const { text: rawText } = await callGeminiVision({ ...filePayload, prompt });
+      let text = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
 
       let parsed: Result;
       try {

@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Upload, FileText, Loader2, CheckCircle2, AlertTriangle, ArrowRight, X, BookOpen, ScanLine, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { callGeminiVision } from '@/lib/gemini-client';
 import ExtractedQuestionsPanel from './ExtractedQuestionsPanel';
 import dynamic from 'next/dynamic';
 
@@ -152,18 +153,7 @@ STRICT RULES — follow every one:
 8. sectionConstraints: if a section says "Attempt any X of Y questions", set attemptAny=X and totalQuestions=Y.
 9. Return ONLY the JSON object. No markdown fences. No extra text.`;
 
-    const response = await fetch('/api/ai/gemini-vision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...visionPayload, prompt }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      throw new Error(err.error || `Gemini request failed: ${response.status}`);
-    }
-
-    const { text: raw, finishReason } = await response.json();
+    const { text: raw, finishReason } = await callGeminiVision({ ...visionPayload, prompt });
 
     const start = raw.indexOf('{');
     if (start === -1) throw new Error(`No JSON found in AI response. Raw (first 300 chars): ${raw.slice(0, 300)}`);
@@ -226,13 +216,7 @@ Rules:
 - type: mcq | short | theory | numerical | diagram
 - Return ONLY the JSON array`;
 
-          const secRes = await fetch('/api/ai/gemini-vision', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...visionPayload, prompt: sectionPrompt }),
-          });
-          if (!secRes.ok) continue;
-          const { text: secRaw } = await secRes.json();
+          const { text: secRaw } = await callGeminiVision({ ...visionPayload, prompt: sectionPrompt });
           const arrStart = secRaw.indexOf('[');
           const arrEnd = secRaw.lastIndexOf(']');
           if (arrStart === -1 || arrEnd === -1) continue;
