@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Languages, Upload, X, Zap, Loader2, Globe, FileText, CheckCircle2, AlertCircle, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Languages, Upload, X, Zap, Loader2, Globe, FileText, CheckCircle2, AlertCircle, History, ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type Result = {
@@ -39,8 +39,10 @@ const LANG_FLAGS: Record<string, string> = {
 };
 
 export default function MultilingualClient() {
+  const [inputMode, setInputMode] = useState<'image' | 'pdf'>('image');
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [language, setLanguage] = useState('Auto-detect');
   const [subject, setSubject] = useState('');
   const [question, setQuestion] = useState('');
@@ -50,6 +52,7 @@ export default function MultilingualClient() {
   const [dragging, setDragging] = useState(false);
   const [showNative, setShowNative] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -72,20 +75,22 @@ export default function MultilingualClient() {
     reader.readAsDataURL(file);
   }
 
+  function handlePdf(file: File) {
+    if (file.type !== 'application/pdf') { toast.error('Please upload a PDF file'); return; }
+    if (file.size > 50 * 1024 * 1024) { toast.error('PDF must be under 50 MB'); return; }
+    setPdfFile(file);
+    setResult(null);
+  }
+
   function removeImage() { setImage(null); setPreview(null); setResult(null); }
+  function removePdf() { setPdfFile(null); setResult(null); }
 
   async function analyze() {
-    if (!image) { toast.error('Please upload an answer sheet image'); return; }
+    const hasInput = inputMode === 'image' ? !!image : !!pdfFile;
+    if (!hasInput) { toast.error(inputMode === 'image' ? 'Please upload an answer sheet image' : 'Please upload a PDF file'); return; }
     setLoading(true);
     setResult(null);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(image);
-      });
-
       const langInstruction = language !== 'Auto-detect'
         ? `The student wrote in ${language}. Evaluate accordingly.`
         : 'Auto-detect the language from the handwriting/text.';
@@ -118,10 +123,33 @@ Return ONLY valid JSON (no markdown fences):
   "feedbackInNativeLanguage": "Same feedback translated to the student's language (if not English)"
 }`;
 
+      let visionPayload: object;
+
+      if (inputMode === 'pdf' && pdfFile) {
+        // Upload PDF to Gemini Files API first
+        const formData = new FormData();
+        formData.append('file', pdfFile);
+        const uploadRes = await fetch('/api/ai/gemini-upload', { method: 'POST', body: formData });
+        if (!uploadRes.ok) {
+          const e = await uploadRes.json().catch(() => ({ error: 'PDF upload failed' }));
+          throw new Error(e.error || 'PDF upload failed');
+        }
+        const { fileUri, mimeType } = await uploadRes.json();
+        visionPayload = { fileUri, mimeType, prompt };
+      } else {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(image!);
+        });
+        visionPayload = { mimeType: image!.type, base64Data: base64, prompt };
+      }
+
       const res = await fetch('/api/ai/gemini-vision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mimeType: image.type, base64Data: base64, prompt }),
+        body: JSON.stringify(visionPayload),
       });
 
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Analysis failed'); }
@@ -261,27 +289,74 @@ Return ONLY valid JSON (no markdown fences):
         {/* Left: Upload + Config */}
         <div className="space-y-4">
           <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
-            <h3 className="font-bold text-foreground mb-4">Upload Answer Sheet</h3>
-            {!preview ? (
-              <div
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${dragging ? 'border-primary bg-secondary/40' : 'border-border hover:border-primary/50 hover:bg-muted/40'}`}
-                onClick={() => fileRef.current?.click()}
-                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            {/* Mode tabs */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => { setInputMode('image'); removePdf(); }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-700 transition-colors ${inputMode === 'image' ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
               >
-                <Upload size={32} className="text-muted-foreground/50 mx-auto mb-3" />
-                <p className="text-sm font-500 text-foreground mb-1">Drop answer sheet here or click to upload</p>
-                <p className="text-xs text-muted-foreground">JPG, PNG supported</p>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-              </div>
+                <ImageIcon size={13} /> Image
+              </button>
+              <button
+                onClick={() => { setInputMode('pdf'); removeImage(); }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-700 transition-colors ${inputMode === 'pdf' ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
+              >
+                <FileText size={13} /> PDF
+              </button>
+            </div>
+
+            {inputMode === 'image' ? (
+              !preview ? (
+                <div
+                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${dragging ? 'border-primary bg-secondary/40' : 'border-border hover:border-primary/50 hover:bg-muted/40'}`}
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+                >
+                  <Upload size={32} className="text-muted-foreground/50 mx-auto mb-3" />
+                  <p className="text-sm font-500 text-foreground mb-1">Drop answer sheet here or click to upload</p>
+                  <p className="text-xs text-muted-foreground">JPG, PNG supported</p>
+                  <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                </div>
+              ) : (
+                <div className="relative rounded-xl overflow-hidden border border-border">
+                  <img src={preview} alt="Answer sheet" className="w-full max-h-64 object-contain bg-muted/20" />
+                  <button onClick={removeImage} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center shadow hover:bg-negative-bg transition-colors">
+                    <X size={14} className="text-negative" />
+                  </button>
+                </div>
+              )
             ) : (
-              <div className="relative rounded-xl overflow-hidden border border-border">
-                <img src={preview} alt="Answer sheet" className="w-full max-h-64 object-contain bg-muted/20" />
-                <button onClick={removeImage} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center shadow hover:bg-negative-bg transition-colors">
-                  <X size={14} className="text-negative" />
-                </button>
-              </div>
+              !pdfFile ? (
+                <div
+                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${dragging ? 'border-primary bg-secondary/40' : 'border-border hover:border-primary/50 hover:bg-muted/40'}`}
+                  onClick={() => pdfRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handlePdf(f); }}
+                >
+                  <FileText size={32} className="text-muted-foreground/50 mx-auto mb-3" />
+                  <p className="text-sm font-500 text-foreground mb-1">Drop PDF here or click to upload</p>
+                  <p className="text-xs text-muted-foreground">PDF up to 50 MB</p>
+                  <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePdf(f); }} />
+                </div>
+              ) : (
+                <div className="flex items-center justify-between bg-muted/40 rounded-xl px-4 py-3 border border-border">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <FileText size={16} className="text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-600 text-foreground truncate">{pdfFile.name}</p>
+                      <p className="text-xs text-muted-foreground">{(pdfFile.size / 1024 / 1024).toFixed(1)} MB</p>
+                    </div>
+                  </div>
+                  <button onClick={removePdf} className="w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center shadow hover:bg-negative-bg transition-colors shrink-0 ml-2">
+                    <X size={14} className="text-negative" />
+                  </button>
+                </div>
+              )
             )}
           </div>
 
@@ -307,7 +382,7 @@ Return ONLY valid JSON (no markdown fences):
             </div>
             <button
               onClick={analyze}
-              disabled={loading || !image}
+              disabled={loading || (inputMode === 'image' ? !image : !pdfFile)}
               className="btn-primary w-full py-3 rounded-xl text-sm font-600 flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
@@ -433,7 +508,7 @@ Return ONLY valid JSON (no markdown fences):
                 )}
               </div>
 
-              <button onClick={() => { setResult(null); setImage(null); setPreview(null); }} className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600">
+              <button onClick={() => { setResult(null); setImage(null); setPreview(null); setPdfFile(null); }} className="btn-secondary w-full py-2.5 rounded-xl text-sm font-600">
                 Evaluate Another Sheet
               </button>
             </div>
