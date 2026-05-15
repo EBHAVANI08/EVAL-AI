@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 
-const GEMINI_STREAM_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse';
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,33 +10,35 @@ export async function POST(request: NextRequest) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 400 });
+      return new Response(JSON.stringify({ error: 'OPENAI_API_KEY not configured' }), { status: 400 });
     }
 
-    const filePart = fileUri
-      ? { file_data: { mime_type: mimeType || 'application/pdf', file_uri: fileUri } }
-      : { inline_data: { mime_type: mimeType, data: base64Data } };
+    const imageContent = base64Data
+      ? { type: 'image_url', image_url: { url: `data:${mimeType || 'application/pdf'};base64,${base64Data}`, detail: 'high' } }
+      : { type: 'image_url', image_url: { url: fileUri, detail: 'high' } };
 
     const body = {
-      contents: [{ parts: [{ text: prompt }, filePart] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, imageContent] }],
+      max_tokens: 16384,
+      temperature: 0.1,
+      stream: true,
     };
 
-    const res = await fetch(`${GEMINI_STREAM_URL}&key=${apiKey}`, {
+    const res = await fetch(OPENAI_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
     });
 
     if (!res.ok || !res.body) {
       const errText = await res.text().catch(() => '');
       const status = res.status === 429 ? 429 : 502;
-      return new Response(JSON.stringify({ error: `Gemini error ${res.status}: ${errText}` }), { status });
+      return new Response(JSON.stringify({ error: `OpenAI error ${res.status}: ${errText}` }), { status });
     }
 
-    // Pipe Gemini's SSE stream straight to the client
     return new Response(res.body, {
       headers: {
         'Content-Type': 'text/event-stream',

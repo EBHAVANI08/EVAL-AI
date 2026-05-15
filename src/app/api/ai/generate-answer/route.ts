@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,9 +10,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'question is required' }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 400 });
+      return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 400 });
     }
 
     const prompt = `You are an expert ${board || 'CBSE'} teacher writing model answers for students.
@@ -48,15 +47,15 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
   "estimatedTime": "X minutes"
 }`;
 
-    const body = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-    };
-
-    const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    const res = await fetch(OPENAI_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 8192,
+        temperature: 0.3,
+      }),
     });
 
     if (!res.ok) {
@@ -68,15 +67,14 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
         );
       }
       return NextResponse.json(
-        { error: `Gemini API error: ${res.status}`, details: errText },
+        { error: `OpenAI API error: ${res.status}`, details: errText },
         { status: res.status }
       );
     }
 
     const data = await res.json();
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    let text = data.choices?.[0]?.message?.content ?? '';
 
-    // Strip all markdown code fences (handles ```json, ```, etc.)
     text = text
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
@@ -87,27 +85,15 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
     try {
       parsed = JSON.parse(text);
     } catch {
-      // Try extracting JSON object from surrounding text
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-        } catch {
-          parsed = null;
-        }
+        try { parsed = JSON.parse(jsonMatch[0]); } catch { parsed = null; }
       }
       if (!parsed) {
-        parsed = {
-          modelAnswer: text,
-          keyPoints: [],
-          markingScheme: [],
-          tips: '',
-          estimatedTime: '',
-        };
+        parsed = { modelAnswer: text, keyPoints: [], markingScheme: [], tips: '', estimatedTime: '' };
       }
     }
 
-    // Ensure modelAnswer is a plain string (not accidentally nested JSON)
     if (parsed.modelAnswer && typeof parsed.modelAnswer === 'object') {
       parsed.modelAnswer = JSON.stringify(parsed.modelAnswer, null, 2);
     }
