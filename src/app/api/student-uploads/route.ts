@@ -14,10 +14,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { subject, grade, fileUri, mimeType, fileName } = body;
+    const { subject, grade, base64Data, mimeType, fileName } = body;
 
-    if (!subject || !grade || !fileUri) {
-      return NextResponse.json({ error: 'subject, grade and fileUri are required' }, { status: 400 });
+    if (!subject || !grade || !base64Data) {
+      return NextResponse.json({ error: 'subject, grade and base64Data are required' }, { status: 400 });
     }
 
     const db = await getDb();
@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
       rollNo: (session.user as any).rollNo ?? 'N/A',
       subject,
       grade,
-      fileUri,
       mimeType: mimeType ?? 'application/pdf',
       fileName: fileName ?? 'answer_sheet',
       status: 'pending', // pending | under_review | evaluated
@@ -86,7 +85,6 @@ export async function GET(req: NextRequest) {
         rollNo: u.rollNo,
         subject: u.subject,
         grade: u.grade,
-        fileUri: u.fileUri,
         mimeType: u.mimeType,
         fileName: u.fileName,
         status: u.status,
