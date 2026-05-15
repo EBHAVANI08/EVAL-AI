@@ -26,14 +26,9 @@ const FeatureCard = ({ f, i }: { f: any; i: number }) => {
                  hover:shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_32px_80px_-8px_rgba(0,0,0,0.14)]"
       style={{ '--glow': f.color } as any}
     >
-      {/* glow layer */}
+      {/* subtle top-right tint on hover */}
       <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none rounded-2xl"
-        style={{ boxShadow: `inset 0 0 80px 0 ${f.color}18` }}
-      />
-      {/* top-right color bleed */}
-      <div
-        className="absolute -top-10 -right-10 w-40 h-40 rounded-full blur-3xl opacity-0 group-hover:opacity-30 transition-opacity duration-700"
+        className="absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-0 group-hover:opacity-15 transition-opacity duration-700 pointer-events-none"
         style={{ backgroundColor: f.color }}
       />
 
@@ -42,12 +37,6 @@ const FeatureCard = ({ f, i }: { f: any; i: number }) => {
         className="relative w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-transform duration-500 group-hover:scale-110"
         style={{ backgroundColor: `${f.color}15` }}
       >
-        <Icon size={26} style={{ color: f.color }} />
-        {/* icon glow pulse */}
-        <div
-          className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-60 blur-md transition-opacity duration-500"
-          style={{ backgroundColor: f.color }}
-        />
         <Icon size={26} style={{ color: f.color }} className="relative z-10" />
       </div>
 
@@ -66,11 +55,9 @@ const FeatureCard = ({ f, i }: { f: any; i: number }) => {
         ))}
       </div>
 
-      {/* colored glow footer bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-        style={{ background: `linear-gradient(90deg, ${f.color}, ${f.color}40, transparent)` }} />
-      <div className="absolute -bottom-6 left-4 right-4 h-8 blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-full"
-        style={{ backgroundColor: f.color }} />
+      {/* subtle bottom accent line */}
+      <div className="absolute bottom-0 left-0 right-0 h-[2px] rounded-b-3xl opacity-0 group-hover:opacity-60 transition-opacity duration-500"
+        style={{ background: `linear-gradient(90deg, ${f.color}80, transparent)` }} />
     </motion.div>
   );
 };
