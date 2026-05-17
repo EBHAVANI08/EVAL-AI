@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import StatusBadge from '@/components/ui/StatusBadge';
 import GlassCard from '@/components/GlassCard';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 
 type EvaluationRow = {
   id: string;
@@ -35,6 +36,8 @@ export default function RecentEvaluationsTable() {
   const [sortKey, setSortKey] = useState<SortKey>('submittedAt');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/evaluations?limit=50')
@@ -73,6 +76,22 @@ export default function RecentEvaluationsTable() {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelected(next);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/evaluations/${deleteId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+      setEvaluations((prev) => prev.filter((e) => e.id !== deleteId));
+      toast.success('Evaluation deleted');
+    } catch {
+      toast.error('Failed to delete evaluation');
+    } finally {
+      setDeleteLoading(false);
+      setDeleteId(null);
+    }
   };
 
   const getConfidenceColor = (v: number | null) => {
@@ -240,7 +259,10 @@ export default function RecentEvaluationsTable() {
                       <button className="p-2 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-[#E2E8F5] transition-all">
                         <Download size={14} className="text-[#64748B]" />
                       </button>
-                      <button className="p-2 hover:bg-red-50 rounded-lg shadow-sm border border-transparent hover:border-red-100 transition-all">
+                      <button
+                        onClick={() => setDeleteId(ev.id)}
+                        className="p-2 hover:bg-red-50 rounded-lg shadow-sm border border-transparent hover:border-red-100 transition-all"
+                      >
                         <Trash2 size={14} className="text-red-500" />
                       </button>
                     </div>
@@ -262,6 +284,15 @@ export default function RecentEvaluationsTable() {
           <button className="px-4 py-2 rounded-xl bg-white border border-[#E2E8F5] text-[11px] font-black text-[#64748B] hover:bg-orange-600 hover:text-white hover:border-orange-600 transition-all">Next</button>
         </div>
       </div>
+      <ConfirmModal
+        isOpen={!!deleteId}
+        title="Delete Evaluation"
+        description="This will permanently delete this evaluation. This action cannot be undone."
+        confirmLabel={deleteLoading ? 'Deleting…' : 'Delete'}
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </GlassCard>
   );
 }

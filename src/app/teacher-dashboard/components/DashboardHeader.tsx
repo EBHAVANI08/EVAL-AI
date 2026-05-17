@@ -18,7 +18,7 @@ export default function DashboardHeader() {
   const userInitial = userName.charAt(0).toUpperCase();
 
   return (
-    <div className="mb-10 relative z-50">
+    <div className="mb-10 relative">
       <div className="flex items-center justify-between gap-8 mb-8">
         <div className="flex items-center gap-12 flex-1">
           <div className="hidden xl:flex items-center gap-3 px-5 py-2.5 bg-white border border-[#E2E8F5] rounded-2xl min-w-[320px] focus-within:border-[#1A6BFF]/30 focus-within:ring-4 focus-within:ring-[#1A6BFF]/5 transition-all">
