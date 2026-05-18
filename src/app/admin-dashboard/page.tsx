@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, Bell, ShieldCheck, UserCheck,
   ClipboardCheck, TrendingUp, AlertTriangle, Plus, Activity,
   FileText, Link2, Loader2, ArrowRight, CalendarDays, ChevronDown, Sparkles,
-  Search, Globe, Mail
+  Search, Globe, Mail, GraduationCap, BookOpen, Trash2, Eye, EyeOff, X, Copy, Check
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -79,6 +79,261 @@ const topSchools = [
   { name: 'Al Noor International School',    score: 82 },
   { name: 'Gulf Education School',           score: 79 },
 ];
+
+type UserRow = { id: string; name: string; email: string; role: string; rollNo: string | null; studentClass: string | null; school: string | null; createdAt: string };
+
+const BLANK_FORM = { name: '', email: '', password: '', role: 'student' as 'teacher' | 'student', rollNo: '', studentClass: '', school: '' };
+
+function UsersSection() {
+  const [tab, setTab] = useState<'all' | 'teacher' | 'student'>('all');
+  const [userList, setUserList] = useState<UserRow[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(BLANK_FORM);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [search, setSearch] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const fetchUsers = () => {
+    setLoadingUsers(true);
+    fetch('/api/users/register')
+      .then(r => r.json())
+      .then(d => { if (d.users) setUserList(d.users); })
+      .catch(() => {})
+      .finally(() => setLoadingUsers(false));
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  const filtered = userList.filter(u => {
+    const matchTab = tab === 'all' || u.role === tab;
+    const matchSearch = !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
+    return matchTab && matchSearch;
+  });
+
+  const handleCreate = async () => {
+    if (!form.name || !form.email || !form.password) { setSaveError('Name, email and password are required.'); return; }
+    setSaving(true); setSaveError('');
+    try {
+      const res = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, role: form.role }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setSaveError(data.error ?? 'Failed to create user'); return; }
+      setUserList(prev => [{ id: data.id, name: form.name, email: form.email, role: form.role, rollNo: form.rollNo || null, studentClass: form.studentClass || null, school: form.school || null, createdAt: new Date().toISOString() }, ...prev]);
+      setShowModal(false);
+      setForm(BLANK_FORM);
+    } catch (e: any) { setSaveError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this user? They will lose access immediately.')) return;
+    await fetch(`/api/users/register?id=${id}`, { method: 'DELETE' });
+    setUserList(prev => prev.filter(u => u.id !== id));
+  };
+
+  const copyText = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  return (
+    <motion.div key="users" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black text-[#0A0F1E] tracking-tighter">User Management</h2>
+          <p className="text-[#64748B] font-bold mt-1">Create and manage teacher & student login credentials</p>
+        </div>
+        <button
+          onClick={() => { setShowModal(true); setSaveError(''); setForm(BLANK_FORM); }}
+          className="flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-[#0A0F1E] text-white font-black text-sm hover:bg-[#059669] transition-all shadow-xl active:scale-95"
+        >
+          <Plus size={18} /> Add User
+        </button>
+      </div>
+
+      {/* Tabs + Search */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex items-center gap-2 bg-white border border-[#E2E8F5] rounded-2xl p-1.5">
+          {(['all', 'teacher', 'student'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${tab === t ? 'bg-[#0A0F1E] text-white shadow-md' : 'text-[#64748B] hover:bg-[#F8FAFF]'}`}>
+              {t === 'all' ? 'All Users' : t === 'teacher' ? 'Teachers' : 'Students'}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 bg-white border border-[#E2E8F5] rounded-2xl px-4 py-2.5 flex-1 max-w-xs">
+          <Search size={15} className="text-[#94A3B8]" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email…"
+            className="bg-transparent text-xs font-bold text-[#0A0F1E] outline-none w-full placeholder:text-[#94A3B8]" />
+        </div>
+        <span className="text-xs font-black text-[#94A3B8] ml-auto">{filtered.length} user{filtered.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      {/* Table */}
+      <GlassCard className="overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[#F1F5F9]">
+                {['User', 'Role', 'Email', 'Roll / Class', 'School', 'Created', ''].map(h => (
+                  <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-[#94A3B8] uppercase tracking-[0.2em]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F8FAFF]">
+              {loadingUsers ? (
+                <tr><td colSpan={7} className="py-16 text-center"><Loader2 size={24} className="animate-spin text-[#94A3B8] mx-auto mb-2" /><p className="text-sm font-bold text-[#94A3B8]">Loading users…</p></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={7} className="py-16 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-[#F8FAFF] flex items-center justify-center mx-auto mb-3"><Users size={24} className="text-[#CBD5E1]" /></div>
+                  <p className="text-sm font-black text-[#0A0F1E]">No users found</p>
+                  <p className="text-xs font-bold text-[#94A3B8] mt-1">Click "Add User" to create the first account</p>
+                </td></tr>
+              ) : filtered.map((u, i) => (
+                <motion.tr key={u.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
+                  className="hover:bg-[#F8FAFF] transition-all group">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm border-2 border-white shadow-sm ${u.role === 'teacher' ? 'bg-[#EEF4FF] text-[#1A6BFF]' : 'bg-[#FFF7ED] text-orange-600'}`}>
+                        {u.name.charAt(0).toUpperCase()}
+                      </div>
+                      <p className="text-sm font-black text-[#0A0F1E]">{u.name}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${u.role === 'teacher' ? 'bg-[#EEF4FF] text-[#1A6BFF]' : 'bg-[#FFF7ED] text-orange-600'}`}>
+                      {u.role === 'teacher' ? '👨‍🏫 Teacher' : '🎓 Student'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#64748B]">{u.email}</span>
+                      <button onClick={() => copyText(u.email, u.id + '-email')} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        {copiedId === u.id + '-email' ? <Check size={12} className="text-green-500" /> : <Copy size={12} className="text-[#94A3B8]" />}
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-xs font-bold text-[#64748B]">{u.rollNo ?? '—'} {u.studentClass ? `· ${u.studentClass}` : ''}</td>
+                  <td className="px-6 py-4 text-xs font-bold text-[#64748B]">{u.school ?? '—'}</td>
+                  <td className="px-6 py-4 text-xs font-bold text-[#94A3B8]">{new Date(u.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                  <td className="px-6 py-4">
+                    <button onClick={() => handleDelete(u.id)} className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-100 transition-all">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
+
+      {/* Create User Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+            <div className="fixed inset-0 z-[71] flex items-center justify-center p-4 pointer-events-none">
+              <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }} transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                className="w-full max-w-lg bg-white rounded-[2.5rem] shadow-[0_40px_80px_rgba(0,0,0,0.2)] overflow-hidden pointer-events-auto">
+                <div className="h-1.5 bg-gradient-to-r from-[#059669] to-[#10B981]" />
+                <div className="px-8 py-6 border-b border-[#F1F5F9] flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-black text-[#0A0F1E]">Add New User</h3>
+                    <p className="text-xs font-bold text-[#94A3B8] mt-1 uppercase tracking-widest">Create login credentials</p>
+                  </div>
+                  <button onClick={() => setShowModal(false)} className="w-9 h-9 rounded-xl hover:bg-[#F8FAFF] flex items-center justify-center text-[#94A3B8]"><X size={18} /></button>
+                </div>
+
+                <div className="px-8 py-6 space-y-5">
+                  {/* Role toggle */}
+                  <div>
+                    <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-2">Role</label>
+                    <div className="flex gap-3">
+                      {(['teacher', 'student'] as const).map(r => (
+                        <button key={r} onClick={() => setForm(f => ({ ...f, role: r }))}
+                          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-black border-2 transition-all ${form.role === r ? (r === 'teacher' ? 'bg-[#EEF4FF] border-[#1A6BFF] text-[#1A6BFF]' : 'bg-[#FFF7ED] border-orange-400 text-orange-600') : 'bg-white border-[#E2E8F5] text-[#94A3B8]'}`}>
+                          {r === 'teacher' ? <><GraduationCap size={16} /> Teacher</> : <><BookOpen size={16} /> Student</>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Name + Email */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Full Name *</label>
+                      <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Priya Sharma"
+                        className="w-full px-4 py-3 rounded-xl border border-[#E2E8F5] text-sm font-bold text-[#0A0F1E] outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all bg-[#F8FAFF]" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Email Address *</label>
+                      <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="user@school.edu"
+                        className="w-full px-4 py-3 rounded-xl border border-[#E2E8F5] text-sm font-bold text-[#0A0F1E] outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all bg-[#F8FAFF]" />
+                    </div>
+                  </div>
+
+                  {/* Password */}
+                  <div>
+                    <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Password *</label>
+                    <div className="relative">
+                      <input type={showPass ? 'text' : 'password'} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Min 8 characters"
+                        className="w-full px-4 py-3 pr-12 rounded-xl border border-[#E2E8F5] text-sm font-bold text-[#0A0F1E] outline-none focus:border-[#059669] focus:ring-2 focus:ring-[#059669]/10 transition-all bg-[#F8FAFF]" />
+                      <button type="button" onClick={() => setShowPass(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#0A0F1E]">
+                        {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Student-only fields */}
+                  {form.role === 'student' && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Roll No</label>
+                        <input value={form.rollNo} onChange={e => setForm(f => ({ ...f, rollNo: e.target.value }))} placeholder="e.g. 2024001"
+                          className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8F5] text-xs font-bold text-[#0A0F1E] outline-none focus:border-orange-400 bg-[#F8FAFF]" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">Class</label>
+                        <input value={form.studentClass} onChange={e => setForm(f => ({ ...f, studentClass: e.target.value }))} placeholder="e.g. 12A"
+                          className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8F5] text-xs font-bold text-[#0A0F1E] outline-none focus:border-orange-400 bg-[#F8FAFF]" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-1.5">School</label>
+                        <input value={form.school} onChange={e => setForm(f => ({ ...f, school: e.target.value }))} placeholder="School name"
+                          className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8F5] text-xs font-bold text-[#0A0F1E] outline-none focus:border-orange-400 bg-[#F8FAFF]" />
+                      </div>
+                    </div>
+                  )}
+
+                  {saveError && <p className="text-xs font-bold text-red-500 bg-red-50 px-4 py-3 rounded-xl border border-red-100">{saveError}</p>}
+                </div>
+
+                <div className="px-8 pb-8 flex gap-3">
+                  <button onClick={() => setShowModal(false)} className="flex-1 py-3.5 rounded-2xl border border-[#E2E8F5] text-sm font-black text-[#64748B] hover:bg-[#F8FAFF] transition-all">Cancel</button>
+                  <button onClick={handleCreate} disabled={saving}
+                    className="flex-1 py-3.5 rounded-2xl bg-[#059669] text-white text-sm font-black hover:bg-[#047857] transition-all disabled:opacity-60 flex items-center justify-center gap-2 shadow-xl shadow-green-500/20">
+                    {saving ? <><Loader2 size={16} className="animate-spin" /> Creating…</> : <><Plus size={16} /> Create Account</>}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
 
 export default function AdminDashboardPage() {
   const { data: session } = useSession();
@@ -259,7 +514,9 @@ export default function AdminDashboardPage() {
 
         <div className="p-10 space-y-12">
           <AnimatePresence mode="wait">
-            {activeNav === 'Overview' ? (
+            {activeNav === 'Users' ? (
+              <UsersSection />
+            ) : activeNav === 'Overview' ? (
               <motion.div
                 key="overview"
                 initial={{ opacity: 0, y: 20 }}

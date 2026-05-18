@@ -94,6 +94,45 @@ export default function RecentEvaluationsTable() {
     }
   };
 
+  const handleDownload = async (ev: EvaluationRow) => {
+    try {
+      const res = await fetch(`/api/evaluations/${ev.id}`);
+      const data = await res.json();
+      const questions = data.questions ?? [];
+
+      const rows: (string | number)[][] = [
+        ['Student', ev.studentName],
+        ['Roll No', ev.rollNo],
+        ['Subject', ev.subject],
+        ['Class', ev.class],
+        ['Score', ev.obtained !== null ? `${ev.obtained}/${ev.maxMarks}` : '—'],
+        ['AI Confidence', ev.aiConfidence !== null ? `${ev.aiConfidence}%` : '—'],
+        ['Status', ev.status],
+        ['Date', ev.submittedAt],
+        [],
+        ['Q No', 'Section', 'Question', 'AI Score', 'Teacher Score', 'Max Marks', 'Confidence', 'Status', 'Comment'],
+        ...questions.map((q: any) => [
+          q.qNo, q.section,
+          `"${(q.questionText ?? '').replace(/"/g, '""')}"`,
+          q.aiScore, q.teacherScore ?? '', q.maxMarks, `${q.aiConfidence}%`, q.status,
+          `"${(q.comment ?? '').replace(/"/g, '""')}"`,
+        ]),
+      ];
+
+      const csv  = rows.map((r) => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `report_${ev.studentName.replace(/\s+/g, '_')}_${ev.subject}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Report downloaded');
+    } catch {
+      toast.error('Failed to download report');
+    }
+  };
+
   const getConfidenceColor = (v: number | null) => {
     if (v === null) return 'text-[#94A3B8]';
     if (v >= 85) return 'text-[#10B981]';
@@ -256,7 +295,11 @@ export default function RecentEvaluationsTable() {
                       <Link href={`/answer-sheet-evaluator?id=${ev.id}`} className="p-2 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-[#E2E8F5] transition-all">
                         <Eye size={14} className="text-[#64748B]" />
                       </Link>
-                      <button className="p-2 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-[#E2E8F5] transition-all">
+                      <button
+                        onClick={() => handleDownload(ev)}
+                        title="Download CSV report"
+                        className="p-2 hover:bg-white rounded-lg shadow-sm border border-transparent hover:border-[#E2E8F5] transition-all"
+                      >
                         <Download size={14} className="text-[#64748B]" />
                       </button>
                       <button

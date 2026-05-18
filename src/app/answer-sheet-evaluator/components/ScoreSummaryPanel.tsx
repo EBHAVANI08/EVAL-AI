@@ -117,6 +117,41 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
     <>
       <aside className="w-full lg:w-64 xl:w-72 lg:shrink-0 border-l border-border bg-card overflow-y-auto scrollbar-thin flex flex-col">
 
+        {/* ── Actions — pinned at TOP ───────────────────────────── */}
+        <div className="p-4 border-b border-border space-y-2 bg-card sticky top-0 z-10">
+          <button
+            onClick={() => setShowFinalizeModal(true)}
+            disabled={!evalId}
+            className="btn-primary w-full h-10 text-sm gap-2 disabled:opacity-60"
+          >
+            <CheckCircle2 size={14} />
+            Finalize Evaluation
+          </button>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveDraft}
+              disabled={isSaving || !evalId}
+              className="btn-secondary flex-1 h-9 text-sm gap-1.5 disabled:opacity-60"
+            >
+              {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              {isSaving ? 'Saving…' : 'Save Draft'}
+            </button>
+
+            <button
+              onClick={handleExport}
+              className="btn-ghost flex-1 h-9 text-sm gap-1.5"
+            >
+              <Download size={13} />
+              Export CSV
+            </button>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground text-center">
+            Finalizing locks all scores and generates the final report.
+          </p>
+        </div>
+
         {/* ── Score hero ───────────────────────────────────────── */}
         <div className="p-5 border-b border-border">
           <p className="panel-section-label mb-3">Running Score</p>
@@ -200,38 +235,6 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
           </div>
         )}
 
-        {/* ── Actions ──────────────────────────────────────────── */}
-        <div className="p-4 mt-auto space-y-2">
-          <button
-            onClick={handleSaveDraft}
-            disabled={isSaving || !evalId}
-            className="btn-secondary w-full h-10 text-sm gap-2 disabled:opacity-60"
-          >
-            {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {isSaving ? 'Saving…' : 'Save Draft'}
-          </button>
-
-          <button
-            onClick={handleExport}
-            className="btn-ghost w-full h-10 text-sm gap-2"
-          >
-            <Download size={14} />
-            Export CSV
-          </button>
-
-          <button
-            onClick={() => setShowFinalizeModal(true)}
-            disabled={!evalId}
-            className="btn-primary w-full h-10 text-sm gap-2 disabled:opacity-60"
-          >
-            <CheckCircle2 size={14} />
-            Finalize Evaluation
-          </button>
-
-          <p className="text-[11px] text-muted-foreground text-center pt-0.5">
-            Finalizing locks all scores and generates the final report.
-          </p>
-        </div>
       </aside>
 
       <ConfirmModal
