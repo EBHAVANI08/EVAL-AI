@@ -176,7 +176,37 @@ export default function EvaluatorWorkspace() {
     name: '', rollNo: '', class: '', school: '', subject: '', board: '',
   });
   const [mobilePanel, setMobilePanel] = useState<'student' | 'questions' | 'score'>('questions');
+  const [preloadedUpload, setPreloadedUpload] = useState<{ base64Data: string; mimeType: string; studentName: string; rollNo: string; subject: string; grade: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // If ?uploadId= is in the URL, load the student submission so teacher can evaluate it
+  useEffect(() => {
+    const uploadId = searchParams.get('uploadId');
+    if (!uploadId) return;
+    setIsLoadingEval(true);
+    fetch(`/api/student-uploads/${uploadId}`)
+      .then((r) => { if (!r.ok) throw new Error('Submission not found'); return r.json(); })
+      .then((data) => {
+        setStudentInfo((prev) => ({
+          ...prev,
+          name: data.studentName || '',
+          rollNo: data.rollNo || '',
+          subject: data.subject || '',
+          class: data.grade || '',
+        }));
+        setPreloadedUpload({
+          base64Data: data.base64Data,
+          mimeType: data.mimeType,
+          studentName: data.studentName,
+          rollNo: data.rollNo,
+          subject: data.subject,
+          grade: data.grade,
+        });
+      })
+      .catch(() => toast.error('Could not load student submission'))
+      .finally(() => setIsLoadingEval(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // If ?id= is in the URL, load the saved evaluation instead of showing upload screen
   useEffect(() => {
@@ -311,10 +341,10 @@ export default function EvaluatorWorkspace() {
     for (const obj of objects) onQuestion(obj);
   };
 
-  const handleEvaluate = async (directFiles?: File[], directDataUrls?: string[]) => {
+  const handleEvaluate = async (directFiles?: File[], directDataUrls?: string[], directPayload?: { base64Data: string; mimeType: string }) => {
     const filesToProcess = directFiles
       ?? ((inputMode === 'scan' || inputMode === 'camera') ? scannedPages : answerFile ? [answerFile] : []);
-    if (filesToProcess.length === 0) return;
+    if (!directPayload && filesToProcess.length === 0) return;
     setEvalStep('evaluating');
     setEvalError('');
     setLiveQuestions([]);
@@ -491,19 +521,29 @@ Output the JSON array now:`;
         };
       };
 
-      for (let pageIdx = 0; pageIdx < filesToProcess.length; pageIdx++) {
-        const pageLabel = filesToProcess.length > 1
-          ? `Page ${pageIdx + 1}/${filesToProcess.length}`
-          : 'Scanning…';
-        setLivePageLabel(pageLabel);
-
-        const visionPayload = await buildVisionPayload(filesToProcess[pageIdx]);
-
-        await evaluatePage(visionPayload, prompt, (rawQ) => {
+      if (directPayload) {
+        // Student submission pre-loaded — evaluate directly without a File
+        setLivePageLabel('Scanning…');
+        await evaluatePage(directPayload, prompt, (rawQ) => {
           allRawQuestions.push(rawQ);
           const liveQ = buildLiveQuestion(rawQ, globalIdx++);
           setLiveQuestions((prev) => [...prev, liveQ]);
         });
+      } else {
+        for (let pageIdx = 0; pageIdx < filesToProcess.length; pageIdx++) {
+          const pageLabel = filesToProcess.length > 1
+            ? `Page ${pageIdx + 1}/${filesToProcess.length}`
+            : 'Scanning…';
+          setLivePageLabel(pageLabel);
+
+          const visionPayload = await buildVisionPayload(filesToProcess[pageIdx]);
+
+          await evaluatePage(visionPayload, prompt, (rawQ) => {
+            allRawQuestions.push(rawQ);
+            const liveQ = buildLiveQuestion(rawQ, globalIdx++);
+            setLiveQuestions((prev) => [...prev, liveQ]);
+          });
+        }
       }
 
       if (allRawQuestions.length === 0) throw new Error('No questions could be evaluated — try a clearer image.');
@@ -689,6 +729,25 @@ Output the JSON array now:`;
                   <a href="/question-paper-analyzer" className="text-primary underline hover:text-primary/80">Analyze a question paper first</a> for better accuracy.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Preloaded student submission banner */}
+          {preloadedUpload && (
+            <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 size={16} className="text-blue-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-700 text-blue-900">Student submission loaded</p>
+                  <p className="text-xs text-blue-600 mt-0.5">{preloadedUpload.studentName} · {preloadedUpload.subject} · {preloadedUpload.grade}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleEvaluate(undefined, undefined, preloadedUpload)}
+                className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-700 hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <Brain size={14} /> Start AI Evaluation
+              </button>
             </div>
           )}
 

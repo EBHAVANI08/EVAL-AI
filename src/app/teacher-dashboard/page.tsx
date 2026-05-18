@@ -5,6 +5,7 @@ import MetricsBentoGrid from './components/MetricsBentoGrid';
 import ChartsRow from './components/ChartsRow';
 import RecentEvaluationsTable from './components/RecentEvaluationsTable';
 import ActivityFeed from './components/ActivityFeed';
+import StudentSubmissionsPanel from './components/StudentSubmissionsPanel';
 
 export default function TeacherDashboardPage() {
   return (
@@ -14,7 +15,8 @@ export default function TeacherDashboardPage() {
         <MetricsBentoGrid />
         <ChartsRow />
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
-          <div className="xl:col-span-2">
+          <div className="xl:col-span-2 space-y-6">
+            <StudentSubmissionsPanel />
             <RecentEvaluationsTable />
           </div>
           <div className="xl:col-span-1">

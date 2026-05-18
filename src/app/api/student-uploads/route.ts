@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       grade,
       mimeType: mimeType ?? 'application/pdf',
       fileName: fileName ?? 'answer_sheet',
+      base64Data: base64Data ?? '',   // store so teachers can evaluate
       status: 'pending', // pending | under_review | evaluated
       createdAt: new Date(),
     };
@@ -89,6 +90,8 @@ export async function GET(req: NextRequest) {
         fileName: u.fileName,
         status: u.status,
         createdAt: u.createdAt?.toISOString?.() ?? String(u.createdAt),
+        // Only include image data for teachers/admins (students don't need it back)
+        ...(role !== 'student' && u.base64Data ? { base64Data: u.base64Data } : {}),
       })),
     });
   } catch (err: any) {

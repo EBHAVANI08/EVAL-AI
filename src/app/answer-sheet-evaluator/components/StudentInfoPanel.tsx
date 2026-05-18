@@ -137,6 +137,34 @@ export default function StudentInfoPanel({
         )}
       </div>
 
+      {/* Scanned answer sheet — shown at top so teacher sees the paper immediately */}
+      {scannedImages.length > 0 && (
+        <div className="px-4 pt-4 pb-3 border-b border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <Camera size={13} className="text-primary" />
+            <p className="text-xs font-600 text-muted-foreground uppercase tracking-wider">
+              Answer Sheet ({scannedImages.length} page{scannedImages.length !== 1 ? 's' : ''})
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {scannedImages.map((src, idx) => (
+              <button
+                key={idx}
+                onClick={() => setLightboxIdx(idx)}
+                className="relative group w-16 h-20 rounded-lg overflow-hidden border border-border hover:border-primary transition-colors"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt={`Page ${idx + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                  <ZoomIn size={14} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <span className="absolute bottom-0.5 right-1 text-xs font-700 text-white drop-shadow">{idx + 1}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Progress */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-2">
@@ -217,33 +245,6 @@ export default function StudentInfoPanel({
           </div>
         </div>
 
-        {/* Scanned pages (camera captures saved with evaluation) */}
-        {scannedImages.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-border">
-            <div className="flex items-center gap-2 mb-2">
-              <Camera size={13} className="text-primary" />
-              <p className="text-xs font-600 text-muted-foreground uppercase tracking-wider">
-                Scanned Pages ({scannedImages.length})
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {scannedImages.map((src, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setLightboxIdx(idx)}
-                  className="relative group w-16 h-20 rounded-lg overflow-hidden border border-border hover:border-primary transition-colors"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt={`Page ${idx + 1}`} className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                    <ZoomIn size={14} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                  <span className="absolute bottom-0.5 right-1 text-xs font-700 text-white drop-shadow">{idx + 1}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Lightbox */}
