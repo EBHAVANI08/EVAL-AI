@@ -17,6 +17,13 @@ import {
 import GlassCard from '@/components/GlassCard';
 import NotificationDropdown from '@/components/NotificationDropdown';
 import ProfileDropdown from '@/components/ProfileDropdown';
+import SchoolsSection from './components/SchoolsSection';
+import ExamsSection from './components/ExamsSection';
+import SubmissionsSection from './components/SubmissionsSection';
+import AnalyticsSection from './components/AnalyticsSection';
+import ReportsSection from './components/ReportsSection';
+import SettingsSection from './components/SettingsSection';
+import IntegrationsSection from './components/IntegrationsSection';
 
 const navGroups = [
   { label: null, items: [{ label: 'Overview', icon: LayoutDashboard }] },
@@ -516,6 +523,20 @@ export default function AdminDashboardPage() {
           <AnimatePresence mode="wait">
             {activeNav === 'Users' ? (
               <UsersSection />
+            ) : activeNav === 'Schools' ? (
+              <SchoolsSection />
+            ) : activeNav === 'Exams' ? (
+              <ExamsSection />
+            ) : activeNav === 'Submissions' ? (
+              <SubmissionsSection />
+            ) : activeNav === 'Analytics' ? (
+              <AnalyticsSection />
+            ) : activeNav === 'Reports' ? (
+              <ReportsSection />
+            ) : activeNav === 'Settings' ? (
+              <SettingsSection />
+            ) : activeNav === 'Integrations' ? (
+              <IntegrationsSection />
             ) : activeNav === 'Overview' ? (
               <motion.div
                 key="overview"
