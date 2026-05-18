@@ -9,6 +9,50 @@ function getApiKey(): string {
   return key;
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Fetch with automatic retry on 503 (high demand) and 429 (rate limit).
+ * Retries up to `maxRetries` times with exponential backoff.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  maxRetries = 4,
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, init);
+
+    if (res.ok) return res;
+
+    // Retryable statuses: 503 (high demand) and 429 (rate limit)
+    if (res.status === 503 || res.status === 429) {
+      const errText = await res.text().catch(() => '');
+      const isLast = attempt === maxRetries;
+
+      if (isLast) {
+        const label = res.status === 429 ? 'Rate limit' : 'Service unavailable';
+        lastError = new Error(`${label} — Gemini is still busy after ${maxRetries} retries. Please try again in a minute.`);
+        break;
+      }
+
+      // Exponential backoff: 3s, 6s, 12s, 24s
+      const delayMs = 3000 * Math.pow(2, attempt);
+      console.warn(`Gemini ${res.status} on attempt ${attempt + 1}/${maxRetries + 1} — retrying in ${delayMs / 1000}s…`);
+      await sleep(delayMs);
+      continue;
+    }
+
+    // Non-retryable error — throw immediately
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Gemini API error: ${res.status} — ${errText.slice(0, 300)}`);
+  }
+
+  throw lastError ?? new Error('Gemini request failed after retries');
+}
+
 /** Call Gemini with an image or PDF (base64) and a text prompt */
 export async function callGeminiVision({
   mimeType,
@@ -36,17 +80,11 @@ export async function callGeminiVision({
     generationConfig: { temperature, maxOutputTokens },
   };
 
-  const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+  const res = await fetchWithRetry(`${GEMINI_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    if (res.status === 429) throw new Error('Rate limit reached. Please wait and try again.');
-    throw new Error(`Gemini API error: ${res.status} — ${errText.slice(0, 200)}`);
-  }
 
   const data = await res.json();
   const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
@@ -71,17 +109,11 @@ export async function callGeminiText(
     },
   };
 
-  const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+  const res = await fetchWithRetry(`${GEMINI_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    if (res.status === 429) throw new Error('Rate limit reached. Please wait and try again.');
-    throw new Error(`Gemini API error: ${res.status} — ${errText.slice(0, 200)}`);
-  }
 
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';

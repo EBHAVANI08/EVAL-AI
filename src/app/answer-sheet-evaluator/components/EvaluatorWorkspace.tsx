@@ -307,15 +307,26 @@ export default function EvaluatorWorkspace() {
       generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
     };
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    );
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const fetchInit: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 
-    if (!res.ok) {
+    // Retry on 503 (high demand) and 429 (rate limit) with exponential backoff
+    let res: Response | null = null;
+    for (let attempt = 0; attempt <= 4; attempt++) {
+      res = await fetch(geminiUrl, fetchInit);
+      if (res.ok) break;
+      if ((res.status === 503 || res.status === 429) && attempt < 4) {
+        const delayMs = 3000 * Math.pow(2, attempt);
+        toast.loading(`Gemini busy — retrying in ${delayMs / 1000}s… (attempt ${attempt + 1}/4)`, { id: 'gemini-retry' });
+        await new Promise((r) => setTimeout(r, delayMs));
+        continue;
+      }
       const errText = await res.text().catch(() => '');
+      toast.dismiss('gemini-retry');
       throw new Error(`Gemini error (${res.status}): ${errText.slice(0, 200)}`);
     }
+    toast.dismiss('gemini-retry');
+    if (!res || !res.ok) throw new Error('Gemini request failed after retries');
 
     const data = await res.json();
     const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
