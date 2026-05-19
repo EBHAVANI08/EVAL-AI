@@ -471,6 +471,28 @@ ${extractedPaper.questions.map((q) => `  Q.${q.qNo} [Sec ${q.section}] [${q.maxM
       const prompt = `You are an expert AI examiner evaluating a student answer sheet.
 
 ══════════════════════════════════════════════════════════
+RULE #0 — DETECT SHEET TYPE AND PROCESS ALL PAGES:
+══════════════════════════════════════════════════════════
+First, determine which type this answer sheet is:
+
+  TYPE A — Question-cum-Answer Sheet (combined):
+    Printed question text is visible on the sheet alongside the student's handwritten answers.
+    → Read the PRINTED question text for each question number.
+    → Populate "questionText" with the exact printed question (trimmed to 120 chars).
+    → Evaluate the student's handwritten answer AGAINST that printed question on the same sheet.
+    → Generate "aiAnswer" as the correct model answer for that printed question.
+
+  TYPE B — Plain Answer Sheet (answers only):
+    Only the student's handwritten answers are on the sheet; no printed question text.
+    → Use the QUESTION PAPER REFERENCE below (if provided) to fill "questionText" and generate "aiAnswer".
+    → If no reference is available, infer question topic from the student's answer and note it.
+
+If this is a MULTI-PAGE PDF:
+  → Process EVERY page from first to last — do NOT stop at page 1.
+  → Questions continue across pages; track all question numbers across the entire document.
+  → Your final JSON must include ALL questions found across ALL pages.${paperMarksHint}${knownQuestionsRef}
+
+══════════════════════════════════════════════════════════
 RULE #1 — ONLY OUTPUT WHAT YOU SEE ON THE ANSWER SHEET:
 ══════════════════════════════════════════════════════════
 BEFORE you score anything, physically scan EVERY page of the answer sheet image from TOP to BOTTOM.
@@ -479,7 +501,7 @@ Your JSON output MUST contain one entry for EVERY question number VISIBLE ON THE
 If the sheet has 10 questions → return 10 entries.
 If the sheet has 37 questions → return 37 entries.
 🚫 DO NOT include questions from a reference list that are NOT written on the answer sheet.
-🚫 DO NOT create "not provided in reference" entries — if you cannot see the question, do not include it.${paperMarksHint}${knownQuestionsRef}
+🚫 DO NOT create "not provided in reference" entries — if you cannot see the question, do not include it.
 
 ══════════════════════════════════════════════════════════
 RULE #2 — CASE STUDY / MULTI-PART QUESTIONS:
@@ -558,10 +580,13 @@ SCORING:
 - hasDiagram: true only if the student actually drew something
 
 FINAL COMPLETENESS CHECK before outputting:
-1. Did I include ONLY questions whose question number is PHYSICALLY VISIBLE on the answer sheet?
-2. Did I accidentally include questions from the reference list that are NOT on the answer sheet? If yes → remove them.
-3. Do all sub-part marks sum to the correct parent total?
-4. Is my output a valid JSON array with NO markdown fences?
+1. Did I detect the correct sheet type (TYPE A combined or TYPE B plain answer sheet)?
+2. For TYPE A: Did I extract the printed question text from the sheet itself for each question?
+3. For a multi-page PDF: Did I process ALL pages and include questions from every page?
+4. Did I include ONLY questions whose question number is PHYSICALLY VISIBLE on the answer sheet?
+5. Did I accidentally include questions from the reference list that are NOT on the answer sheet? If yes → remove them.
+6. Do all sub-part marks sum to the correct parent total?
+7. Is my output a valid JSON array with NO markdown fences?
 Output the JSON array now:`;
 
       // ── Streaming evaluation — questions appear in real-time ──────────────
