@@ -365,9 +365,33 @@ export default function EvaluatorWorkspace() {
             break; // break inner loop → continue modelLoop
           }
 
-          // No more fallbacks
+          // No more Gemini fallbacks — try OpenAI
+          toast.loading('Switching to OpenAI GPT-4o…', { id: 'gemini-retry' });
+          try {
+            const oaiRes = await fetch('/api/ai/openai-fallback', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                prompt,
+                base64Data: visionPayload.base64Data,
+                mimeType: visionPayload.mimeType,
+              }),
+            });
+            if (oaiRes.ok) {
+              const oaiData = await oaiRes.json();
+              if (oaiData.text) {
+                toast.dismiss('gemini-retry');
+                // Inject OpenAI result as if it came from Gemini
+                res = new Response(
+                  JSON.stringify({ candidates: [{ content: { parts: [{ text: oaiData.text }] }, finishReason: oaiData.finishReason ?? 'stop' }] }),
+                  { status: 200, headers: { 'Content-Type': 'application/json' } },
+                );
+                break modelLoop;
+              }
+            }
+          } catch { /* OpenAI also failed */ }
           toast.dismiss('gemini-retry');
-          throw new Error('All Gemini models are busy. Please try again in a minute.');
+          throw new Error('All AI models are busy. Please try again in a minute.');
         }
 
         // Non-retryable error

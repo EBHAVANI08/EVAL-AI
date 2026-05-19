@@ -142,7 +142,21 @@ export async function callGeminiVision({
     }
   }
 
-  throw lastErr ?? new Error('All Gemini models failed. Please try again later.');
+  // All Gemini models exhausted — try OpenAI as final fallback (images only; PDFs not supported)
+  if (mimeType?.startsWith('image/') && base64Data) {
+    console.warn('All Gemini models failed — falling back to OpenAI GPT-4o…');
+    const oaiRes = await fetch('/api/ai/openai-fallback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, base64Data, mimeType }),
+    });
+    if (oaiRes.ok) {
+      const oaiData = await oaiRes.json();
+      if (oaiData.text) return { text: oaiData.text, finishReason: oaiData.finishReason ?? 'stop' };
+    }
+  }
+
+  throw lastErr ?? new Error('All AI models failed. Please try again later.');
 }
 
 /** Call Gemini with a text-only prompt */
@@ -185,5 +199,17 @@ export async function callGeminiText(
     }
   }
 
-  throw lastErr ?? new Error('All Gemini models failed. Please try again later.');
+  // All Gemini models exhausted — try OpenAI as final fallback
+  console.warn('All Gemini models failed — falling back to OpenAI GPT-4o…');
+  const oaiRes = await fetch('/api/ai/openai-fallback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (oaiRes.ok) {
+    const oaiData = await oaiRes.json();
+    if (oaiData.text) return oaiData.text;
+  }
+
+  throw lastErr ?? new Error('All AI models failed. Please try again later.');
 }
