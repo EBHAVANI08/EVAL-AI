@@ -29,17 +29,44 @@ async function fetchWithRetry(
 
     // Retryable statuses: 503 (high demand) and 429 (rate limit)
     if (res.status === 503 || res.status === 429) {
-      const errText = await res.text().catch(() => '');
       const isLast = attempt === maxRetries;
+      const label = res.status === 429 ? 'Rate limit' : 'Service unavailable';
 
       if (isLast) {
-        const label = res.status === 429 ? 'Rate limit' : 'Service unavailable';
         lastError = new Error(`${label} — Gemini is still busy after ${maxRetries} retries. Please try again in a minute.`);
         break;
       }
 
-      // Exponential backoff: 3s, 6s, 12s, 24s
-      const delayMs = 3000 * Math.pow(2, attempt);
+      // Determine wait time: prefer server hint, else exponential backoff
+      let delayMs: number | null = null;
+
+      // 1) Check Retry-After header
+      const retryAfterHeader = res.headers.get('Retry-After');
+      if (retryAfterHeader) {
+        const secs = parseInt(retryAfterHeader, 10);
+        if (!isNaN(secs)) delayMs = secs * 1000;
+      }
+
+      // 2) Parse retryDelay from JSON body (Google's retryInfo detail)
+      if (delayMs === null) {
+        try {
+          const body = await res.clone().json();
+          const details: Array<{ retryDelay?: string }> = body?.error?.details ?? [];
+          for (const d of details) {
+            if (d.retryDelay) {
+              const secs = parseInt(d.retryDelay, 10);
+              if (!isNaN(secs)) { delayMs = secs * 1000; break; }
+            }
+          }
+        } catch { /* non-JSON body — ignore */ }
+      }
+
+      // 3) Fallback: longer base for 429 (rate limit needs ~60s), shorter for 503
+      if (delayMs === null) {
+        const base = res.status === 429 ? 15000 : 3000;
+        delayMs = base * Math.pow(2, attempt);
+      }
+
       console.warn(`Gemini ${res.status} on attempt ${attempt + 1}/${maxRetries + 1} — retrying in ${delayMs / 1000}s…`);
       await sleep(delayMs);
       continue;
