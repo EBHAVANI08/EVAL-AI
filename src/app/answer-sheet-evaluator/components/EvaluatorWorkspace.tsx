@@ -307,24 +307,76 @@ export default function EvaluatorWorkspace() {
       generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
     };
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const fetchInit: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 
-    // Retry on 503 (high demand) and 429 (rate limit) with exponential backoff
+    // Models tried in order; falls back to next when primary is unavailable
+    const evalModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const maxRetries = 4;
     let res: Response | null = null;
-    for (let attempt = 0; attempt <= 4; attempt++) {
-      res = await fetch(geminiUrl, fetchInit);
-      if (res.ok) break;
-      if ((res.status === 503 || res.status === 429) && attempt < 4) {
-        const delayMs = 3000 * Math.pow(2, attempt);
-        toast.loading(`Gemini busy — retrying in ${delayMs / 1000}s… (attempt ${attempt + 1}/4)`, { id: 'gemini-retry' });
-        await new Promise((r) => setTimeout(r, delayMs));
-        continue;
+
+    modelLoop: for (let mi = 0; mi < evalModels.length; mi++) {
+      const model = evalModels[mi];
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        res = await fetch(geminiUrl, fetchInit);
+        if (res.ok) break modelLoop;
+
+        if (res.status === 503 || res.status === 429) {
+          if (attempt < maxRetries) {
+            let delayMs: number | null = null;
+
+            // 1) Retry-After header
+            const retryAfterHeader = res.headers.get('Retry-After');
+            if (retryAfterHeader) {
+              const secs = parseInt(retryAfterHeader, 10);
+              if (!isNaN(secs) && secs > 0) delayMs = secs * 1000;
+            }
+
+            // 2) retryDelay from JSON body
+            if (delayMs === null) {
+              try {
+                const errBody = await res.clone().json();
+                const details: Array<{ retryDelay?: string }> = errBody?.error?.details ?? [];
+                for (const d of details) {
+                  if (d.retryDelay) {
+                    const secs = parseInt(d.retryDelay, 10);
+                    if (!isNaN(secs) && secs > 0) { delayMs = secs * 1000; break; }
+                  }
+                }
+              } catch { /* ignore */ }
+            }
+
+            // 3) Fallback: 15 s base for 429, 10 s for 503
+            if (delayMs === null) {
+              const base = res.status === 429 ? 15000 : 10000;
+              delayMs = base * Math.pow(2, attempt);
+            }
+            delayMs = Math.max(delayMs, 10000);
+
+            toast.loading(`Gemini busy — retrying in ${delayMs / 1000}s… (attempt ${attempt + 1}/${maxRetries})`, { id: 'gemini-retry' });
+            await new Promise((r) => setTimeout(r, delayMs!));
+            continue;
+          }
+
+          // All retries spent for this model — try next fallback
+          if (mi < evalModels.length - 1) {
+            toast.loading(`Switching to fallback model ${evalModels[mi + 1]}…`, { id: 'gemini-retry' });
+            break; // break inner loop → continue modelLoop
+          }
+
+          // No more fallbacks
+          toast.dismiss('gemini-retry');
+          throw new Error('All Gemini models are busy. Please try again in a minute.');
+        }
+
+        // Non-retryable error
+        const errText = await res.text().catch(() => '');
+        toast.dismiss('gemini-retry');
+        throw new Error(`Gemini error (${res.status}): ${errText.slice(0, 200)}`);
       }
-      const errText = await res.text().catch(() => '');
-      toast.dismiss('gemini-retry');
-      throw new Error(`Gemini error (${res.status}): ${errText.slice(0, 200)}`);
     }
+
     toast.dismiss('gemini-retry');
     if (!res || !res.ok) throw new Error('Gemini request failed after retries');
 
