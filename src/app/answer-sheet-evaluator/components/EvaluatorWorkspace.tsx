@@ -8,6 +8,9 @@ import dynamic from 'next/dynamic';
 import StudentInfoPanel from './StudentInfoPanel';
 import EvaluationGrid from './EvaluationGrid';
 import ScoreSummaryPanel from './ScoreSummaryPanel';
+import BehaviorAnalysisPanel from './BehaviorAnalysisPanel';
+import { computeBehaviorMetrics } from '@/lib/behavior-analysis';
+import type { BehaviorAnalysis } from '@/lib/behavior-analysis';
 import type { ExtractedPaper } from '@/app/question-paper-analyzer/components/QuestionPaperAnalyzerClient';
 
 const ScannerCapture = dynamic(() => import('@/components/ui/ScannerCapture'), { ssr: false });
@@ -161,7 +164,7 @@ export default function EvaluatorWorkspace() {
   const [questions, setQuestions] = useState<QuestionEvaluation[]>([]);
   const [activeSection, setActiveSection] = useState<string>('all');
   const [evalStep, setEvalStep] = useState<EvalStep>('upload');
-  const [answerFile, setAnswerFile] = useState<File | null>(null);
+  const [answerFiles, setAnswerFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [extractedPaper, setExtractedPaper] = useState<ExtractedPaper | null>(null);
   const [evalError, setEvalError] = useState('');
@@ -175,8 +178,10 @@ export default function EvaluatorWorkspace() {
   const [studentInfo, setStudentInfo] = useState<StudentInfo>({
     name: '', rollNo: '', class: '', school: '', subject: '', board: '',
   });
-  const [mobilePanel, setMobilePanel] = useState<'student' | 'questions' | 'score'>('questions');
+  const [mobilePanel, setMobilePanel] = useState<'student' | 'questions' | 'score' | 'behavior'>('questions');
   const [preloadedUpload, setPreloadedUpload] = useState<{ base64Data: string; mimeType: string; studentName: string; rollNo: string; subject: string; grade: string } | null>(null);
+  const [behaviorAnalysis, setBehaviorAnalysis] = useState<BehaviorAnalysis | null>(null);
+  const [behaviorLoading, setBehaviorLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // If ?uploadId= is in the URL, load the student submission so teacher can evaluate it
@@ -234,6 +239,9 @@ export default function EvaluatorWorkspace() {
         if (Array.isArray(data.scannedImages) && data.scannedImages.length > 0) {
           setScannedImages(data.scannedImages);
         }
+        if (data.behaviorAnalysis) {
+          setBehaviorAnalysis(data.behaviorAnalysis);
+        }
         setEvalStep('done');
       })
       .catch(() => {
@@ -263,18 +271,18 @@ export default function EvaluatorWorkspace() {
     }
   }, []);
 
-  const handleFile = (f: File) => {
+  const handleFiles = (files: File[]) => {
     const valid = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
-    if (!valid.includes(f.type)) {
-      toast.error('Please upload a PDF or image file');
-      return;
+    const validFiles: File[] = [];
+    for (const f of files) {
+      if (!valid.includes(f.type)) { toast.error(`${f.name}: only PDF, JPG, PNG, WebP allowed`); continue; }
+      const maxMB = f.type === 'application/pdf' ? 50 : 20;
+      if (f.size > maxMB * 1024 * 1024) { toast.error(`${f.name}: file size must be under ${maxMB} MB`); continue; }
+      // If adding a PDF, it replaces everything (PDFs contain all pages)
+      if (f.type === 'application/pdf') { setAnswerFiles([f]); return; }
+      validFiles.push(f);
     }
-    const maxMB = f.type === 'application/pdf' ? 50 : 20;
-    if (f.size > maxMB * 1024 * 1024) {
-      toast.error(`File size must be under ${maxMB} MB`);
-      return;
-    }
-    setAnswerFile(f);
+    if (validFiles.length > 0) setAnswerFiles((prev) => [...prev, ...validFiles]);
   };
 
   // Build vision payload for a file
@@ -310,7 +318,7 @@ export default function EvaluatorWorkspace() {
     const fetchInit: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 
     // Models tried in order; falls back to next when primary is unavailable
-    const evalModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const evalModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
     const maxRetries = 4;
     let res: Response | null = null;
 
@@ -430,11 +438,16 @@ export default function EvaluatorWorkspace() {
 
   const handleEvaluate = async (directFiles?: File[], directDataUrls?: string[], directPayload?: { base64Data: string; mimeType: string }) => {
     const filesToProcess = directFiles
-      ?? ((inputMode === 'scan' || inputMode === 'camera') ? scannedPages : answerFile ? [answerFile] : []);
+      ?? ((inputMode === 'scan' || inputMode === 'camera') ? scannedPages : answerFiles.length > 0 ? answerFiles : []);
     if (!directPayload && filesToProcess.length === 0) return;
     setEvalStep('evaluating');
     setEvalError('');
     setLiveQuestions([]);
+
+    // Collect base64 images from ALL sources for behavior/handwriting analysis
+    const collectedImageBase64s: string[] = [];
+    let collectedMimeType = 'image/jpeg'; // track actual mime type of collected images
+    let pdfPageCount = 0; // count PDF pages so we can show placeholders
 
     try {
 
@@ -614,7 +627,25 @@ Output the JSON array now:`;
         return {
           id: `q-${String(idx + 1).padStart(3, '0')}`,
           qNo: q.qNo || String(idx + 1),
-          section: q.section || 'A',
+          section: (() => {
+            const aiSec: string = q.section || '';
+            if (extractedPaper && extractedPaper.questions.length > 0) {
+              const qKey = (q.qNo || '').toLowerCase().replace(/[\s()[\]]/g, '');
+              const refQ = extractedPaper.questions.find((rq) => {
+                const rKey = rq.qNo.toLowerCase().replace(/[\s()[\]]/g, '');
+                if (rKey === qKey) return true;
+                // Sub-part: qKey starts with rKey AND suffix begins with a non-digit
+                // e.g. "36i" starts with "36", suffix "i" is non-digit → valid sub-part
+                // but "17" starts with "1", suffix "7" is digit → NOT a sub-part
+                if (qKey.startsWith(rKey) && qKey.length > rKey.length) {
+                  return /^[^0-9]/.test(qKey.slice(rKey.length));
+                }
+                return false;
+              });
+              if (refQ) return refQ.section;
+            }
+            return aiSec || 'A';
+          })(),
           questionText: q.questionText || '',
           aiAnswer: q.aiAnswer || '',
           ocrText: q.ocrText || '',
@@ -636,6 +667,11 @@ Output the JSON array now:`;
       if (directPayload) {
         // Student submission pre-loaded — evaluate directly without a File
         setLivePageLabel('Scanning…');
+        // Capture image for behavior analysis (images only, not PDFs)
+        if (directPayload.mimeType?.startsWith('image/') && directPayload.base64Data) {
+          collectedImageBase64s.push(directPayload.base64Data);
+          collectedMimeType = directPayload.mimeType;
+        }
         await evaluatePage(directPayload, prompt, (rawQ) => {
           allRawQuestions.push(rawQ);
           const liveQ = buildLiveQuestion(rawQ, globalIdx++);
@@ -650,6 +686,14 @@ Output the JSON array now:`;
 
           const visionPayload = await buildVisionPayload(filesToProcess[pageIdx]);
 
+          // Capture image base64 for thumbnail display (images only; PDFs counted separately)
+          if (visionPayload.mimeType?.startsWith('image/') && visionPayload.base64Data) {
+            collectedImageBase64s.push(visionPayload.base64Data);
+            collectedMimeType = visionPayload.mimeType;
+          } else if (visionPayload.mimeType === 'application/pdf') {
+            pdfPageCount++;
+          }
+
           await evaluatePage(visionPayload, prompt, (rawQ) => {
             allRawQuestions.push(rawQ);
             const liveQ = buildLiveQuestion(rawQ, globalIdx++);
@@ -662,6 +706,23 @@ Output the JSON array now:`;
 
       // Re-build final evaluated array using same helper (IDs are now stable)
       const evaluated: QuestionEvaluation[] = allRawQuestions.map((q, i) => buildLiveQuestion(q, i));
+
+      // Fix sections: always resolve from reference paper (buildLiveQuestion already did this,
+      // but re-apply here as a safety pass on the final array)
+      if (extractedPaper && extractedPaper.questions.length > 0) {
+        for (const q of evaluated) {
+          const qKey = q.qNo.toLowerCase().replace(/[\s()[\]]/g, '');
+          const refQ = extractedPaper.questions.find((rq) => {
+            const rKey = rq.qNo.toLowerCase().replace(/[\s()[\]]/g, '');
+            if (rKey === qKey) return true;
+            if (qKey.startsWith(rKey) && qKey.length > rKey.length) {
+              return /^[^0-9]/.test(qKey.slice(rKey.length));
+            }
+            return false;
+          });
+          if (refQ) q.section = refQ.section;
+        }
+      }
 
       // === Enforce section caps ONLY for explicit "answer any X of Y" constraints ===
       // Do NOT apply caps derived purely from paper question count — the extracted paper
@@ -705,14 +766,45 @@ Output the JSON array now:`;
       setEvalStep('done');
       toast.success(`Evaluated ${evaluated.length} questions successfully!`);
 
+      // Warn if significantly fewer questions found than expected from the reference paper
+      if (extractedPaper) {
+        const expectedCount = extractedPaper.questions.length;
+        if (expectedCount > 0 && evaluated.length < expectedCount * 0.7) {
+          const missing = expectedCount - evaluated.length;
+          toast.error(
+            `Only ${evaluated.length} of ~${expectedCount} expected questions were found. ${missing} may be missing — ensure all pages were uploaded.`,
+            { duration: 8000 }
+          );
+        }
+      }
+
       // Auto-save to MongoDB right after AI evaluation
       try {
-        // Compress camera thumbnails for storage (only if camera pages were provided)
+        // Collect images for storage + behavior analysis
+        // Priority: camera thumbnails → uploaded image pages → directPayload image
         let imagesToStore: string[] = [];
         if (directDataUrls && directDataUrls.length > 0) {
           imagesToStore = await Promise.all(directDataUrls.map(compressThumbnail));
-          setScannedImages(imagesToStore);
+        } else if (collectedImageBase64s.length > 0) {
+          // Uploaded image files — compress thumbnails and keep full data URI so <img> can render
+          imagesToStore = await Promise.all(
+            collectedImageBase64s.slice(0, 4).map((b64) =>
+              compressThumbnail(`data:${collectedMimeType};base64,${b64}`)
+            )
+          );
+        } else if (pdfPageCount > 0) {
+          // PDF upload — browsers can't render PDF as <img>; generate an SVG placeholder per page
+          const pdfPlaceholder = `data:image/svg+xml;utf8,${encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="80" viewBox="0 0 64 80">
+              <rect width="64" height="80" rx="6" fill="#f4f4f5"/>
+              <rect x="8" y="8" width="48" height="64" rx="4" fill="white" stroke="#e4e4e7" stroke-width="1.5"/>
+              <path d="M20 24 h24 M20 32 h20 M20 40 h24 M20 48 h16" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round"/>
+              <text x="32" y="68" font-size="8" fill="#71717a" text-anchor="middle" font-family="sans-serif">PDF</text>
+            </svg>`
+          )}`;
+          imagesToStore = Array(Math.min(pdfPageCount, 4)).fill(pdfPlaceholder);
         }
+        if (imagesToStore.length > 0) setScannedImages(imagesToStore);
 
         const saveRes = await fetch('/api/evaluations', {
           method: 'POST',
@@ -736,6 +828,91 @@ Output the JSON array now:`;
           const { id } = await saveRes.json();
           setEvalId(id);
           toast.success('Evaluation saved to database', { id: 'db-save' });
+
+          // ── Auto-run behavior analysis ─────────────────────────────────
+          setBehaviorLoading(true);
+          try {
+            // 1. Compute local metrics (no API call)
+            const localAnalysis = computeBehaviorMetrics(evaluated, studentInfo);
+
+            // 2. Fetch historical scores for trend
+            let historicalScores: number[] | undefined;
+            if (studentInfo.rollNo) {
+              const histRes = await fetch(`/api/evaluations?rollNo=${encodeURIComponent(studentInfo.rollNo)}&limit=6`);
+              if (histRes.ok) {
+                const histData = await histRes.json();
+                const evals: any[] = histData.evaluations ?? histData ?? [];
+                historicalScores = evals
+                  .filter((e: any) => e.trainingData?.totalMax > 0)
+                  .map((e: any) => Math.round((e.trainingData.totalObtained / e.trainingData.totalMax) * 100))
+                  .reverse();
+              }
+            }
+
+            // Recompute with trend data
+            const localWithTrend = computeBehaviorMetrics(evaluated, studentInfo, historicalScores);
+
+            // 3. Call Gemini for handwriting analysis (if images available)
+            let handwritingFeatures = null;
+            let personalityProfile = null;
+            let emotionalSignals = null;
+            let learningBehaviorInsights = null;
+
+            // Use all captured image base64s (from uploaded files or camera)
+            const imagesToAnalyze = collectedImageBase64s.length > 0
+              ? collectedImageBase64s
+              : imagesToStore;
+            if (imagesToAnalyze.length > 0) {
+              const baRes = await fetch('/api/ai/behavior-analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  images: imagesToAnalyze.slice(0, 4),
+                  mimeType: collectedMimeType,
+                  subject: studentInfo.subject,
+                  gradeLevel: studentInfo.class,
+                  evaluationSummary: {
+                    totalQ: evaluated.length,
+                    avgScorePercent: localWithTrend.subjectBehavior.avgScore,
+                    flaggedCount: evaluated.filter((q) => q.aiConfidence < 70).length,
+                    hardCount: localWithTrend.subjectBehavior.difficultTopics.length,
+                    avgConfidence: localWithTrend.subjectBehavior.avgConfidence,
+                  },
+                  questionBehaviors: localWithTrend.questionBehaviors,
+                }),
+              });
+              if (baRes.ok) {
+                const baData = await baRes.json();
+                handwritingFeatures = baData.handwritingFeatures ?? null;
+                personalityProfile = baData.personalityProfile ?? null;
+                emotionalSignals = baData.emotionalSignals ?? null;
+                learningBehaviorInsights = baData.learningBehaviorInsights ?? null;
+              }
+            }
+
+            // 4. Merge full analysis
+            const fullAnalysis: BehaviorAnalysis = {
+              ...localWithTrend,
+              handwritingFeatures,
+              personalityProfile,
+              emotionalSignals,
+              learningBehaviorInsights,
+            };
+
+            setBehaviorAnalysis(fullAnalysis);
+
+            // 5. Persist behavior analysis to DB
+            await fetch(`/api/evaluations/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ behaviorAnalysis: fullAnalysis }),
+            });
+          } catch {
+            // Non-fatal — behavior analysis is optional
+          } finally {
+            setBehaviorLoading(false);
+          }
+          // ─────────────────────────────────────────────────────────────
         }
       } catch {
         // Non-fatal — user can still review and manually save draft
@@ -757,7 +934,7 @@ Output the JSON array now:`;
 
   const handleReset = () => {
     setEvalStep('upload');
-    setAnswerFile(null);
+    setAnswerFiles([]);
     setScannedPages([]);
     setInputMode('upload');
     setLiveQuestions([]);
@@ -766,6 +943,8 @@ Output the JSON array now:`;
     setEvalError('');
     setEvalId(null);
     setScannedImages([]);
+    setBehaviorAnalysis(null);
+    setBehaviorLoading(false);
   };
 
   const updateQuestion = (id: string, field: 'teacherScore' | 'comment', value: number | string | null) => {
@@ -795,7 +974,7 @@ Output the JSON array now:`;
 
   // Upload step
   if (evalStep === 'upload') {
-    const readyToEvaluate = inputMode === 'upload' ? !!answerFile : scannedPages.length > 0;
+    const readyToEvaluate = inputMode === 'upload' ? answerFiles.length > 0 : scannedPages.length > 0;
 
     return (
       <div className="flex-1 overflow-y-auto p-5 lg:p-8">
@@ -809,7 +988,7 @@ Output the JSON array now:`;
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-600 text-foreground">Question paper loaded</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {extractedPaper.metadata.subject} · {extractedPaper.questions.length} questions · {extractedPaper.metadata.totalMarks} marks
+                    {extractedPaper.metadata.subject} · {extractedPaper.questions.filter((q: any) => !q.parentQNo).length} questions · {extractedPaper.metadata.totalMarks} marks
                   </p>
                 </div>
                 <button
@@ -819,13 +998,16 @@ Output the JSON array now:`;
                   <X size={11} /> Clear
                 </button>
               </div>
-              {extractedPaper.metadata.totalMarks > 0 &&
-                extractedPaper.questions.length > 0 &&
-                extractedPaper.metadata.totalMarks / extractedPaper.questions.length < 0.5 && (
+              {(() => {
+                const parentQCount = extractedPaper.questions.filter((q: any) => !q.parentQNo).length;
+                return extractedPaper.metadata.totalMarks > 0 &&
+                  parentQCount > 0 &&
+                  extractedPaper.metadata.totalMarks / parentQCount < 0.5;
+              })() && (
                 <div className="flex items-start gap-2.5 px-4 py-3 bg-warning-bg border border-warning/20 rounded-xl">
                   <AlertTriangle size={13} className="text-warning shrink-0 mt-0.5" />
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    <strong className="text-foreground">Marks may be wrong</strong> — {extractedPaper.metadata.totalMarks} marks for {extractedPaper.questions.length} questions is too low.{' '}
+                    <strong className="text-foreground">Marks may be wrong</strong> — {extractedPaper.metadata.totalMarks} marks for {extractedPaper.questions.filter((q: any) => !q.parentQNo).length} questions is too low.{' '}
                     <button onClick={() => { sessionStorage.removeItem('extractedPaper'); setExtractedPaper(null); }} className="text-primary underline">Clear and re-analyze</button>.
                   </p>
                 </div>
@@ -898,7 +1080,7 @@ Output the JSON array now:`;
             ] as { mode: 'upload' | 'camera' | 'scan'; icon: React.ElementType; label: string }[]).map(({ mode, icon: Icon, label }) => (
               <button
                 key={mode}
-                onClick={() => { setInputMode(mode); setAnswerFile(null); setScannedPages([]); }}
+                onClick={() => { setInputMode(mode); setAnswerFiles([]); setScannedPages([]); }}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-600 transition-all ${
                   inputMode === mode
                     ? 'bg-card shadow-sm text-foreground'
@@ -913,53 +1095,64 @@ Output the JSON array now:`;
 
           {/* Upload mode */}
           {inputMode === 'upload' && (
-            <div
-              className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center transition-all cursor-pointer ${
-                dragOver
-                  ? 'border-primary bg-primary/5 scale-[1.01]'
-                  : answerFile
-                  ? 'border-positive bg-positive-bg'
-                  : 'border-border hover:border-primary/40 hover:bg-muted/20'
-              }`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-              />
-              {answerFile ? (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-positive-bg border border-positive/20 flex items-center justify-center">
-                    <CheckCircle2 size={28} className="text-positive" />
-                  </div>
-                  <div>
-                    <p className="font-600 text-foreground text-sm">{answerFile.name}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{(answerFile.size / 1024 / 1024).toFixed(2)} MB · Ready to evaluate</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setAnswerFile(null); }}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-negative transition-colors"
-                  >
-                    <X size={11} /> Remove file
-                  </button>
-                </div>
-              ) : (
+            <div className="space-y-3">
+              <div
+                className={`border-2 border-dashed rounded-2xl p-8 sm:p-10 text-center transition-all cursor-pointer ${
+                  dragOver ? 'border-primary bg-primary/5 scale-[1.01]' : 'border-border hover:border-primary/40 hover:bg-muted/20'
+                }`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(Array.from(e.dataTransfer.files)); }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => { if (e.target.files?.length) handleFiles(Array.from(e.target.files)); e.target.value = ''; }}
+                />
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
                     <Upload size={26} className="text-primary" />
                   </div>
                   <div>
-                    <p className="font-600 text-foreground">Drop answer sheet here</p>
-                    <p className="text-sm text-muted-foreground mt-1">or click to browse</p>
-                    <p className="text-xs text-muted-foreground/70 mt-1">PDF, JPG, PNG, WebP · Max 20 MB</p>
+                    <p className="font-600 text-foreground">
+                      {answerFiles.length > 0 ? 'Add more pages' : 'Drop answer sheet here'}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">or click to browse · PDF or images</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      Upload all pages — PDF (all pages in one file) or multiple image files
+                    </p>
                   </div>
+                </div>
+              </div>
+
+              {/* File list */}
+              {answerFiles.length > 0 && (
+                <div className="space-y-2">
+                  {answerFiles.map((f, idx) => (
+                    <div key={idx} className="flex items-center gap-3 px-4 py-2.5 bg-positive-bg border border-positive/20 rounded-xl">
+                      <CheckCircle2 size={15} className="text-positive shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-600 text-foreground truncate">
+                          {answerFiles.length > 1 ? `Page ${idx + 1}: ` : ''}{f.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{(f.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAnswerFiles((prev) => prev.filter((_, i) => i !== idx))}
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-negative transition-colors shrink-0"
+                      >
+                        <X size={12} /> Remove
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground text-center">
+                    {answerFiles.length} page{answerFiles.length > 1 ? 's' : ''} · AI will evaluate all pages in sequence
+                  </p>
                 </div>
               )}
             </div>
@@ -1013,7 +1206,9 @@ Output the JSON array now:`;
             className="btn-primary w-full h-12 text-sm gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Brain size={17} />
-            {(inputMode === 'scan' || inputMode === 'camera') && scannedPages.length > 1
+            {inputMode === 'upload' && answerFiles.length > 1
+              ? `Evaluate ${answerFiles.length} Pages with AI`
+              : (inputMode === 'scan' || inputMode === 'camera') && scannedPages.length > 1
               ? `Evaluate ${scannedPages.length} ${inputMode === 'camera' ? 'Camera' : 'Scanned'} Pages with AI`
               : 'Evaluate Answer Sheet with AI'}
           </button>
@@ -1120,6 +1315,7 @@ Output the JSON array now:`;
           { id: 'student', label: 'Student' },
           { id: 'questions', label: 'Questions' },
           { id: 'score', label: 'Score' },
+          { id: 'behavior', label: 'Behavior' },
         ] as { id: typeof mobilePanel; label: string }[]).map((tab) => (
           <button
             key={tab.id}
@@ -1135,7 +1331,8 @@ Output the JSON array now:`;
         ))}
       </div>
 
-      <div className="flex flex-1 overflow-hidden relative">
+      {/* Main 3-column area */}
+      <div className="flex flex-1 overflow-hidden relative min-h-0">
         {/* Reset button */}
         <div className="absolute top-0 right-0 z-10 p-2">
           <button
@@ -1165,8 +1362,8 @@ Output the JSON array now:`;
           <EvaluationGrid questions={filteredQuestions} updateQuestion={updateQuestion} />
         </div>
 
-        {/* Right: Score Panel */}
-        <div className={`lg:flex flex-col ${mobilePanel === 'score' ? 'flex flex-1' : 'hidden'}`}>
+        {/* Right: Score Panel only */}
+        <div className={`lg:flex flex-col overflow-y-auto ${mobilePanel === 'score' ? 'flex flex-1' : 'hidden'}`}>
           <ScoreSummaryPanel
             questions={questions}
             paperTotalMarks={extractedPaper?.metadata.totalMarks}
@@ -1174,7 +1371,23 @@ Output the JSON array now:`;
             studentInfo={studentInfo}
           />
         </div>
+
+        {/* Mobile-only: Behavior tab */}
+        {mobilePanel === 'behavior' && (
+          <div className="flex flex-col flex-1 overflow-y-auto p-4 lg:hidden">
+            <BehaviorAnalysisPanel analysis={behaviorAnalysis} isLoading={behaviorLoading} />
+          </div>
+        )}
       </div>
+
+      {/* Full-width Behavior Analysis — desktop only, below the 3-column grid */}
+      {(behaviorAnalysis || behaviorLoading) && (
+        <div className="hidden lg:block border-t border-border bg-background overflow-y-auto shrink-0 max-h-[42vh]">
+          <div className="max-w-full px-6 py-4">
+            <BehaviorAnalysisPanel analysis={behaviorAnalysis} isLoading={behaviorLoading} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -25,6 +25,12 @@ export default function StudentInfoPanel({
   studentInfo, scannedImages = [], onUpdateStudentInfo,
 }: StudentInfoPanelProps) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  // Ensure every src is a renderable URI — fix legacy entries stored as raw base64 without prefix
+  const normalizeImgSrc = (src: string) =>
+    src.startsWith('data:') || src.startsWith('http') || src.startsWith('/')
+      ? src
+      : `data:image/jpeg;base64,${src}`;
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState<StudentInfo>(studentInfo);
 
@@ -154,7 +160,7 @@ export default function StudentInfoPanel({
                 className="relative group w-16 h-20 rounded-lg overflow-hidden border border-border hover:border-primary transition-colors"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt={`Page ${idx + 1}`} className="w-full h-full object-cover" />
+                <img src={normalizeImgSrc(src)} alt={`Page ${idx + 1}`} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                   <ZoomIn size={14} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
@@ -261,7 +267,7 @@ export default function StudentInfoPanel({
               </button>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={scannedImages[lightboxIdx]} alt={`Page ${lightboxIdx + 1}`} className="w-full rounded-xl border border-border" />
+            <img src={normalizeImgSrc(scannedImages[lightboxIdx])} alt={`Page ${lightboxIdx + 1}`} className="w-full rounded-xl border border-border" />
             {scannedImages.length > 1 && (
               <div className="flex justify-center gap-3 mt-3">
                 <button
