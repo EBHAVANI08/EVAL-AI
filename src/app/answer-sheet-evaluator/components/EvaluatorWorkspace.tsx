@@ -1029,24 +1029,69 @@ Output the JSON array now:`;
             </div>
           )}
 
-          {/* Preloaded student submission banner */}
-          {preloadedUpload && (
-            <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
-              <div className="flex items-center gap-3">
-                <CheckCircle2 size={16} className="text-blue-600 shrink-0" />
-                <div>
-                  <p className="text-sm font-700 text-blue-900">Student submission loaded</p>
-                  <p className="text-xs text-blue-600 mt-0.5">{preloadedUpload.studentName} · {preloadedUpload.subject} · {preloadedUpload.grade}</p>
+          {/* Preloaded student submission — full preview card */}
+          {preloadedUpload && (() => {
+            const isPdf = preloadedUpload.mimeType === 'application/pdf';
+            const imgSrc = isPdf
+              ? null
+              : preloadedUpload.base64Data.startsWith('data:')
+                ? preloadedUpload.base64Data
+                : `data:${preloadedUpload.mimeType};base64,${preloadedUpload.base64Data}`;
+            return (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-blue-200">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={15} className="text-blue-600 shrink-0" />
+                    <p className="text-sm font-700 text-blue-900">Student submission loaded</p>
+                  </div>
+                  <button
+                    onClick={() => handleEvaluate(undefined, undefined, preloadedUpload)}
+                    className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-700 hover:bg-blue-700 transition-colors flex items-center gap-2"
+                  >
+                    <Brain size={14} /> Start AI Evaluation
+                  </button>
+                </div>
+
+                {/* Student meta */}
+                <div className="px-4 py-2.5 flex items-center gap-4 text-xs text-blue-700 border-b border-blue-200/60">
+                  <span><strong>Student:</strong> {preloadedUpload.studentName || '—'}</span>
+                  <span><strong>Subject:</strong> {preloadedUpload.subject || '—'}</span>
+                  <span><strong>Class:</strong> {preloadedUpload.grade || '—'}</span>
+                  {preloadedUpload.rollNo && <span><strong>Roll:</strong> {preloadedUpload.rollNo}</span>}
+                </div>
+
+                {/* Document preview */}
+                <div className="p-4">
+                  {isPdf ? (
+                    <div className="flex items-center gap-4 px-5 py-6 bg-white border border-blue-100 rounded-xl">
+                      <div className="w-14 h-16 bg-red-50 border border-red-200 rounded-lg flex flex-col items-center justify-center shrink-0">
+                        <span className="text-xs font-800 text-red-600 leading-none">PDF</span>
+                        <div className="w-6 h-0.5 bg-red-300 mt-1 rounded" />
+                        <div className="w-4 h-0.5 bg-red-200 mt-0.5 rounded" />
+                        <div className="w-5 h-0.5 bg-red-200 mt-0.5 rounded" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-600 text-foreground">PDF Answer Sheet</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">PDF preview not available in browser · AI will read all pages during evaluation</p>
+                      </div>
+                    </div>
+                  ) : imgSrc ? (
+                    <div className="bg-white border border-blue-100 rounded-xl overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imgSrc}
+                        alt="Student answer sheet"
+                        className="w-full max-h-96 object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="py-4 text-center text-xs text-muted-foreground">Preview unavailable</div>
+                  )}
                 </div>
               </div>
-              <button
-                onClick={() => handleEvaluate(undefined, undefined, preloadedUpload)}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-700 hover:bg-blue-700 transition-colors flex items-center gap-2"
-              >
-                <Brain size={14} /> Start AI Evaluation
-              </button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Student info form */}
           <div className="bg-card border border-border rounded-2xl p-5 shadow-card">
@@ -1074,7 +1119,12 @@ Output the JSON array now:`;
             </div>
           </div>
 
-          {/* Input mode tabs */}
+          {/* Input mode tabs — hidden when a student submission is pre-loaded */}
+          {preloadedUpload && (
+            <p className="text-xs text-center text-muted-foreground">
+              Student&apos;s answer sheet is pre-loaded above. Click <strong>Start AI Evaluation</strong> to begin, or upload a different file below to override.
+            </p>
+          )}
           <div className="flex gap-1 p-1 bg-muted rounded-xl">
             {([
               { mode: 'upload', icon: Upload, label: 'Upload File' },
