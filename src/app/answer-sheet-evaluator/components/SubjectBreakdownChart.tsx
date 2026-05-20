@@ -37,9 +37,10 @@ export default function SubjectBreakdownChart({ questions }: SubjectBreakdownCha
       <BarChart data={data} margin={{ top: 4, right: 0, left: -30, bottom: 0 }} barCategoryGap="15%">
         <XAxis
           dataKey="qNo"
-          tick={{ fontSize: 9, fill: 'var(--muted-foreground)' }}
+          tick={{ fontSize: 8, fill: 'var(--muted-foreground)' }}
           axisLine={false}
           tickLine={false}
+          interval={data.length > 20 ? Math.ceil(data.length / 15) - 1 : 0}
         />
         <YAxis
           domain={[0, 100]}

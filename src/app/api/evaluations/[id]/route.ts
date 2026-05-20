@@ -72,6 +72,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       questions: doc.questions || [],
       trainingData: doc.trainingData || {},
       scannedImages: doc.scannedImages || [],
+      behaviorAnalysis: doc.behaviorAnalysis || null,
       createdAt: doc.createdAt,
       finalizedAt: doc.finalizedAt || null,
     });
@@ -109,19 +110,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const body = await request.json();
-    const { questions, studentInfo } = body;
+    const { questions, studentInfo, behaviorAnalysis } = body;
 
-    if (!questions || !Array.isArray(questions)) {
-      return NextResponse.json({ error: 'questions array is required' }, { status: 400 });
+    if (!questions && !behaviorAnalysis) {
+      return NextResponse.json({ error: 'questions array or behaviorAnalysis is required' }, { status: 400 });
     }
 
     const db = await getDb();
-    const updateFields: Record<string, any> = {
-      questions,
-      trainingData: buildTrainingData(questions),
-      updatedAt: new Date(),
-    };
+    const updateFields: Record<string, any> = { updatedAt: new Date() };
+
+    if (questions && Array.isArray(questions)) {
+      updateFields.questions = questions;
+      updateFields.trainingData = buildTrainingData(questions);
+    }
     if (studentInfo) updateFields.studentInfo = studentInfo;
+    if (behaviorAnalysis) updateFields.behaviorAnalysis = behaviorAnalysis;
 
     const result = await db.collection('evaluations').updateOne(
       { _id: new ObjectId(id), status: { $ne: 'finalized' } },

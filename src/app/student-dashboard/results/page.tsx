@@ -10,6 +10,7 @@ import {
   Lightbulb, Star, ChevronRight, Zap, BarChart2, LineChart as LineIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import BehaviorAnalysisPanel from '@/app/answer-sheet-evaluator/components/BehaviorAnalysisPanel';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid, ReferenceLine, Legend,
@@ -27,6 +28,7 @@ type EvalDetail = {
   paperInfo: Record<string, any>;
   questions: any[];
   trainingData: Record<string, any>;
+  behaviorAnalysis?: any;
   createdAt: string;
 };
 
@@ -289,6 +291,8 @@ export default function ResultsPage() {
   const [detail, setDetail]               = useState<EvalDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [expandedQ, setExpandedQ]         = useState<string | null>(null);
+  const [mistakesOnly, setMistakesOnly]   = useState(false);
+  const [qPanelRef]                       = useState(() => React.createRef<HTMLDivElement>());
   const [msgOpen, setMsgOpen]             = useState(false);
   const [msgText, setMsgText]             = useState('');
   const [msgSending, setMsgSending]       = useState(false);
@@ -370,11 +374,18 @@ export default function ResultsPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ evaluationId: detail.id, subject: detail.studentInfo?.subject ?? 'General', message: msgText.trim() }),
       });
-      if (!res.ok) throw new Error();
+      if (res.status === 401) {
+        toast.error('Please log in to your student account to message the teacher.');
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error ${res.status}`);
+      }
       setMsgSent(true); setMsgText('');
       toast.success('Message sent to teacher!');
       setTimeout(() => { setMsgSent(false); setMsgOpen(false); }, 3000);
-    } catch { toast.error('Failed to send. Try again.'); }
+    } catch (e: any) { toast.error(e.message || 'Failed to send. Try again.'); }
     finally { setMsgSending(false); }
   };
 
@@ -392,7 +403,9 @@ export default function ResultsPage() {
   /* ── Detail view ─────────────────────────────────────── */
   if (detail) {
     const obt     = detail.trainingData?.totalObtained ?? 0;
-    const max     = detail.paperInfo?.totalMarks ?? detail.trainingData?.totalMax ?? 0;
+    // Use totalMax from actual evaluated questions (authoritative), not extracted paper's declared total
+    // which may be inflated by OR alternatives counted twice
+    const max     = detail.trainingData?.totalMax ?? detail.paperInfo?.totalMarks ?? 0;
     const pct     = max > 0 ? Math.round((obt / max) * 100) : 0;
     const { grade, color: gradeColor } = gradeFrom(pct);
     const subject = detail.studentInfo?.subject ?? detail.paperInfo?.subject ?? 'Evaluation';
@@ -425,7 +438,7 @@ export default function ResultsPage() {
         {/* Back button */}
         <motion.button
           initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-          onClick={() => { setDetail(null); setExpandedQ(null); setMsgOpen(false); }}
+          onClick={() => { setDetail(null); setExpandedQ(null); setMistakesOnly(false); setMsgOpen(false); }}
           className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#7C3AED] font-semibold mb-5 transition-colors"
         >
           <ArrowLeft size={15} /> Back to Results
@@ -478,9 +491,15 @@ export default function ResultsPage() {
           </motion.div>
 
           {/* Panel 2: Question Breakdown */}
-          <motion.div {...panelAnim(0.15)} className="bg-white border border-[#E8EFFE] rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#E8EFFE]">
+          <motion.div ref={qPanelRef} {...panelAnim(0.15)} className="bg-white border border-[#E8EFFE] rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#E8EFFE] flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#0A0F1E]">Question Breakdown</h3>
+              {mistakesOnly && (
+                <button onClick={() => setMistakesOnly(false)}
+                  className="text-[11px] text-[#7C3AED] font-semibold hover:underline">
+                  Show All
+                </button>
+              )}
             </div>
             {qs.length === 0 ? (
               <div className="px-5 py-12 text-center">
@@ -494,7 +513,13 @@ export default function ResultsPage() {
                   <span className="col-span-3 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider text-center">Score</span>
                   <span className="col-span-3 text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider text-center">Status</span>
                 </div>
-                {qs.map((q: any, i: number) => {
+                {(mistakesOnly
+                  ? qs.filter((q: any) => {
+                      const s = q.teacherScore ?? q.aiScore ?? 0;
+                      return q.maxMarks > 0 && s < q.maxMarks;
+                    })
+                  : qs
+                ).map((q: any, i: number) => {
                   const score   = q.teacherScore ?? q.aiScore ?? 0;
                   const qKey    = q.id ?? String(i);
                   const expanded = expandedQ === qKey;
@@ -623,6 +648,13 @@ export default function ResultsPage() {
         {/* Performance Charts */}
         <PerformanceCharts qs={qs} evals={evals} />
 
+        {/* Learning Behavior Intelligence Report */}
+        {detail.behaviorAnalysis && (
+          <div className="mb-5">
+            <BehaviorAnalysisPanel analysis={detail.behaviorAnalysis} isLoading={false} />
+          </div>
+        )}
+
         {/* Ask Teacher */}
         <AnimatePresence>
           {msgOpen && (
@@ -663,7 +695,11 @@ export default function ResultsPage() {
             <p className="text-xs text-[#64748B] leading-relaxed">Keep up the good work! Practice more to improve your weak areas and aim for a higher score next time.</p>
           </div>
           {[
-            { icon: BookOpen, title: 'Review Mistakes', sub: 'Go through your incorrect answers', onClick: () => setExpandedQ(null) },
+            { icon: BookOpen, title: 'Review Mistakes', sub: 'Go through your incorrect answers', onClick: () => {
+              setMistakesOnly(true);
+              setExpandedQ(null);
+              setTimeout(() => qPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+            }},
             { icon: Award,    title: 'Download Report',  sub: 'Save your evaluation report',        onClick: downloadReport },
           ].map((card) => (
             <motion.button key={card.title} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}

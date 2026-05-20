@@ -3,7 +3,7 @@
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 // Models tried in order; next is used when current is unavailable (503) or rate-limited (429)
-const MODEL_PRIORITY = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const MODEL_PRIORITY = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 
 function getApiKey(): string {
   const key = process.env.NEXT_PUBLIC_GEMINI_API_KEY;

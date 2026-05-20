@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
       subject: ev.studentInfo?.subject || ev.paperInfo?.subject || '—',
       class: ev.studentInfo?.class || '—',
       obtained: ev.trainingData?.totalObtained ?? null,
-      maxMarks: ev.paperInfo?.totalMarks ?? ev.trainingData?.totalMax ?? 0,
+      maxMarks: ev.trainingData?.totalMax ?? ev.paperInfo?.totalMarks ?? 0,
       aiConfidence: ev.trainingData?.avgAiConfidence ?? null,
       overrides: ev.trainingData?.overrideCount ?? 0,
       status: ev.status === 'finalized' ? 'finalized' : 'review',

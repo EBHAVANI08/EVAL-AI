@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import {
   ChevronLeft, Upload, FileText, Loader2, CheckCircle2, AlertTriangle,
-  ArrowRight, X, BookOpen, ScanLine, Camera, Plus, Trash2, Settings2,
+  ArrowRight, X, BookOpen, ScanLine, Camera, Settings2,
+  Sparkles, Brain, Layers, Tags,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { callGeminiVision } from '@/lib/gemini-client';
@@ -15,11 +16,13 @@ const ScannerCapture = dynamic(() => import('@/components/ui/ScannerCapture'), {
 const CameraScanner = dynamic(() => import('@/components/ui/CameraScanner'), { ssr: false });
 
 export interface ExtractedQuestion {
-  qNo: string;
-  section: string;
+  qNo: string;           // e.g. "1", "36a", "36(i)"
+  section: string;       // "A", "B", "C", "D", "E"
   questionText: string;
   maxMarks: number;
-  type: 'theory' | 'numerical' | 'diagram' | 'mcq' | 'short';
+  type: 'mcq' | 'assertion-reason' | 'short' | 'theory' | 'numerical' | 'diagram' | 'case-study';
+  isChoiceAlt?: boolean; // true = this is an OR/internal-choice alternative
+  parentQNo?: string;    // for sub-parts: e.g. "36" for sub-parts "36(i)", "36(ii)"
 }
 
 export interface SectionConstraint {
@@ -51,15 +54,8 @@ export type SectionConfig = {
   attemptAny: number; // 0 = all questions required
 };
 
-type Step = 'upload' | 'configure' | 'analyzing' | 'done' | 'error';
+type Step = 'upload' | 'analyzing' | 'done' | 'error';
 
-function makeSectionId() { return Math.random().toString(36).slice(2, 8); }
-
-const DEFAULT_SECTIONS: SectionConfig[] = [
-  { id: makeSectionId(), name: 'A', label: 'Objective / MCQ',   numQuestions: 20, marksPerQ: 1, attemptAny: 0 },
-  { id: makeSectionId(), name: 'B', label: 'Short Answer',       numQuestions: 8,  marksPerQ: 2, attemptAny: 0 },
-  { id: makeSectionId(), name: 'C', label: 'Long Answer',        numQuestions: 5,  marksPerQ: 5, attemptAny: 0 },
-];
 
 async function compressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -104,8 +100,17 @@ export default function QuestionPaperAnalyzerClient() {
   const [dragOver, setDragOver] = useState(false);
   const [extractedPaper, setExtractedPaper] = useState<ExtractedPaper | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [sections, setSections] = useState<SectionConfig[]>(DEFAULT_SECTIONS);
+  const [activeSubStep, setActiveSubStep] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drive the sequential step animation while analyzing
+  useEffect(() => {
+    if (step !== 'analyzing') { setActiveSubStep(0); return; }
+    setActiveSubStep(0);
+    const delays = [0, 1400, 2900, 4500]; // ms when each step becomes active
+    const timers = delays.map((d, i) => setTimeout(() => setActiveSubStep(i), d));
+    return () => timers.forEach(clearTimeout);
+  }, [step]);
 
   const handleFile = (f: File) => {
     const valid = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
@@ -121,31 +126,7 @@ export default function QuestionPaperAnalyzerClient() {
     if (f) handleFile(f);
   };
 
-  // ── Section config helpers ────────────────────────────────────────────────
-  const updateSection = (id: string, key: keyof SectionConfig, val: any) =>
-    setSections((prev) => prev.map((s) => s.id === id ? { ...s, [key]: val } : s));
-
-  const addSection = () => {
-    const used = new Set(sections.map((s) => s.name));
-    const next = 'ABCDEFGHIJ'.split('').find((c) => !used.has(c)) ?? String.fromCharCode(65 + sections.length);
-    setSections((prev) => [
-      ...prev,
-      { id: makeSectionId(), name: next, label: '', numQuestions: 5, marksPerQ: 2, attemptAny: 0 },
-    ]);
-  };
-
-  const removeSection = (id: string) => setSections((prev) => prev.filter((s) => s.id !== id));
-
-  // ── Build section hint string for the AI prompt ───────────────────────────
-  const buildSectionHint = (): string => {
-    if (sections.length === 0) return '';
-    const lines = sections.map((s) => {
-      const total = s.numQuestions * s.marksPerQ;
-      const attempt = s.attemptAny > 0 ? ` (Attempt any ${s.attemptAny} of ${s.numQuestions})` : '';
-      return `  - Section ${s.name}${s.label ? ` (${s.label})` : ''}: ${s.numQuestions} questions × ${s.marksPerQ} mark${s.marksPerQ !== 1 ? 's' : ''} = ${total} marks${attempt}`;
-    });
-    return `\n\nSECTION STRUCTURE (defined by teacher — use this for mark allocation):\n${lines.join('\n')}\nFor each question, assign exactly ${sections.map((s) => `Section ${s.name} → ${s.marksPerQ}m`).join(', ')}.`;
-  };
+  // No section config needed — AI auto-detects everything from the paper
 
   // ── Analyze a single file ─────────────────────────────────────────────────
   const analyzeFile = async (f: File, visionPayload?: Record<string, string>): Promise<ExtractedPaper> => {
@@ -161,38 +142,93 @@ export default function QuestionPaperAnalyzerClient() {
       }
     }
 
-    const sectionHint = buildSectionHint();
+    const prompt = `You are an expert exam paper analyzer for Indian and international boards (CBSE, ICSE, State Board, IB, IGCSE, university papers, etc.). Read this ENTIRE paper from page 1 to the last page and extract EVERY question from EVERY section. Auto-detect the paper format — do NOT assume any fixed structure.
 
-    const prompt = `You are an expert exam paper analyzer. Read this ENTIRE paper from the first page to the last page and extract every question from every section.${sectionHint}
-
-Return ONLY valid JSON (no markdown, no explanation):
+═══════════════════════════════════════════════════
+OUTPUT — Return ONLY valid JSON, no markdown fences:
+═══════════════════════════════════════════════════
 {
   "metadata": {
-    "subject": "string",
-    "class": "string",
-    "board": "string",
-    "totalMarks": number,
-    "duration": "string",
+    "subject": "Physics",
+    "class": "Class 12",
+    "board": "CBSE",
+    "totalMarks": 80,
+    "duration": "3 hours",
     "sections": ["A","B","C","D","E"],
     "sectionConstraints": {
-      "B": { "attemptAny": 5, "totalQuestions": 8 }
+      "B": { "attemptAny": 3, "totalQuestions": 5 }
     }
   },
   "questions": [
-    { "qNo": "1", "section": "A", "questionText": "...", "maxMarks": 1, "type": "mcq" }
+    { "qNo": "1",    "section": "A", "questionText": "...(A) opt1 (B) opt2 (C) opt3 (D) opt4", "maxMarks": 1, "type": "mcq" },
+    { "qNo": "19",   "section": "A", "questionText": "Assertion: ... Reason: ...", "maxMarks": 1, "type": "assertion-reason" },
+    { "qNo": "21",   "section": "B", "questionText": "...", "maxMarks": 2, "type": "short" },
+    { "qNo": "26",   "section": "C", "questionText": "...", "maxMarks": 3, "type": "theory" },
+    { "qNo": "36i",  "section": "E", "questionText": "(i) ...", "maxMarks": 2, "type": "case-study", "parentQNo": "36" },
+    { "qNo": "36ii", "section": "E", "questionText": "(ii) ...", "maxMarks": 2, "type": "case-study", "parentQNo": "36" },
+    { "qNo": "21OR", "section": "B", "questionText": "OR: ...", "maxMarks": 2, "type": "short", "isChoiceAlt": true }
   ]
 }
 
-STRICT RULES:
-1. SCAN ALL SECTIONS: go through Section A, then B, then C, then D, then E (and any others). Do NOT stop after the first section.
-2. Every question from every section must appear in the "questions" array with the correct "section" value.
-3. Sub-parts: if a question has (a)(b)(c) or (i)(ii)(iii) parts, add each as a separate entry. Their maxMarks must sum to the parent total.
-4. Case studies (e.g. CBSE Sec E): each sub-part is a separate entry; divide parent marks equally if not stated.
-5. MCQ options: include all 4 options in questionText.
-6. questionText: max 150 characters.
-7. type must be one of: mcq | short | theory | numerical | diagram
-8. sectionConstraints: if a section says "Attempt any X of Y questions", set attemptAny=X and totalQuestions=Y.
-9. Return ONLY the JSON object. No markdown fences. No extra text.`;
+═══════════════════════════════════════════════════
+STRICT EXTRACTION RULES:
+═══════════════════════════════════════════════════
+
+RULE 1 — SCAN ALL SECTIONS COMPLETELY:
+  Process Section A → B → C → D → E in order. Never skip or truncate a section.
+
+RULE 2 — QUESTION TYPES (assign accurately):
+  • mcq             → Multiple Choice Questions (4 options A/B/C/D)
+  • assertion-reason → "Assertion (A): ... Reason (R): ..." format questions
+  • short            → Very Short Answer, 1-2 sentence answers expected
+  • theory           → Short/Long Answer needing explanation or derivation
+  • numerical        → Calculation/problem solving question
+  • diagram          → Requires drawing a circuit/graph/figure/diagram
+  • case-study       → Sub-part of a case study / passage-based question
+
+RULE 3 — SUB-PARTS (CRITICAL for Case Studies and Long Answer):
+  If a question number (e.g. Q.36) has sub-parts (i)(ii)(iii) or (a)(b)(c):
+  → Create a SEPARATE entry for EACH sub-part
+  → qNo format: "36i", "36ii", "36iii" OR "36a", "36b"
+  → Set parentQNo to the parent question number ("36")
+  → Distribute marks: if Q.36 = 4 marks with 2 sub-parts → each gets 2 marks
+  → If marks are stated per sub-part, use those exact marks
+  → Do NOT create a parent entry — only sub-part entries
+
+RULE 4 — CASE STUDY SECTIONS (e.g. CBSE Section E, 4-mark questions):
+  Each case study question (Q.36, Q.37, Q.38) has a passage followed by sub-questions.
+  → Extract EACH sub-question (i)(ii)(iii)(iv) as a separate entry with type "case-study"
+  → Mark split: 4-mark question → typically 2+2 or 1+1+1+1; use stated marks
+  → Include the passage context in the first sub-part's questionText
+  → Set parentQNo for all sub-parts
+
+RULE 5 — INTERNAL CHOICES (OR questions):
+  OR alternatives only appear between main questions (e.g. between Q.21 and Q.22) — NEVER between sub-parts.
+  A sub-part (e.g. 36i and 36ii) is always answered together; there is no OR choice within sub-parts.
+  When a MAIN question offers an OR alternative:
+  → Add the main question normally
+  → Add the OR version with same qNo + "OR" suffix (e.g. "21OR") and set isChoiceAlt: true
+  → Both versions get the same maxMarks
+  → If you see "OR" between sub-parts, treat it as part of the sub-part text, NOT as a choice alternative
+
+RULE 6 — MCQ OPTIONS:
+  Include all 4 options in questionText: "...question text (A) opt1 (B) opt2 (C) opt3 (D) opt4"
+  Truncate if total exceeds 200 chars but keep all 4 options.
+
+RULE 7 — ASSERTION-REASON QUESTIONS:
+  Format: "Assertion (A): ...statement... Reason (R): ...statement..."
+  These are always 1 mark each, type: "assertion-reason"
+
+RULE 8 — MARKS ACCURACY:
+  Read marks from the paper itself — they are always printed next to the question number or in the instructions.
+  Sub-parts must sum to the parent question's total marks.
+  Never guess marks — always read from the paper.
+
+RULE 9 — questionText length: max 200 characters per entry. Truncate with "..." if longer.
+
+RULE 10 — sectionConstraints: if a section says "attempt any X of Y", set attemptAny=X, totalQuestions=Y.
+
+RULE 11 — Return ONLY the JSON object. No markdown. No explanation. No extra text.`;
 
     const { text: raw, finishReason } = await callGeminiVision({ ...visionPayload, prompt });
 
@@ -235,20 +271,23 @@ STRICT RULES:
       toast.loading(`Extracting missing sections: ${emptySections.join(', ')}…`, { id: 'section-refetch' });
       for (const sec of emptySections) {
         try {
-          const secMarks = sections.find((s) => s.name === sec)?.marksPerQ ?? 1;
-          const sectionPrompt = `Extract ONLY the questions from Section ${sec} of this exam paper. Each question is worth ${secMarks} mark${secMarks !== 1 ? 's' : ''}.
+          const sectionPrompt = `Extract ONLY the questions from Section ${sec} of this exam paper.
+Read the marks for each question directly from the paper (printed next to question number).
 
-Return ONLY a valid JSON array (no markdown):
+Return ONLY a valid JSON array (no markdown fences):
 [
-  { "qNo": "19", "section": "${sec}", "questionText": "...(max 150 chars)", "maxMarks": ${secMarks}, "type": "short" }
+  { "qNo": "19", "section": "${sec}", "questionText": "...(max 200 chars)", "maxMarks": 2, "type": "short" }
 ]
 
-Rules:
-- Section ${sec} questions only — include all of them
-- Sub-parts (a)(b)(c) or (i)(ii)(iii) = separate entries with marks divided
-- questionText: max 150 chars
-- type: mcq | short | theory | numerical | diagram
-- Return ONLY the JSON array`;
+RULES:
+1. Section ${sec} questions ONLY — include every single one.
+2. Read marks from paper — do NOT guess.
+3. type: mcq | assertion-reason | short | theory | numerical | diagram | case-study
+4. If question has sub-parts (i)(ii) or (a)(b): separate entry per sub-part, set parentQNo to parent number.
+5. OR/internal choices: add main question, then OR version with qNo suffix "OR" and isChoiceAlt: true.
+6. MCQ: include all 4 options in questionText.
+7. questionText: max 200 chars.
+8. Return ONLY the JSON array. No explanation.`;
           const { text: secRaw } = await callGeminiVision({ ...visionPayload, prompt: sectionPrompt });
           const arrStart = secRaw.indexOf('[');
           const arrEnd = secRaw.lastIndexOf(']');
@@ -296,10 +335,10 @@ Rules:
 
   const handleReset = () => {
     setStep('upload'); setFile(null); setCameraPages([]);
-    setExtractedPaper(null); setErrorMsg(''); setSections(DEFAULT_SECTIONS);
+    setExtractedPaper(null); setErrorMsg('');
   };
 
-  const readyToEvaluate = inputMode === 'upload' ? !!file : cameraPages.length > 0;
+  const readyToAnalyze = inputMode === 'upload' ? !!file : cameraPages.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -311,7 +350,6 @@ Rules:
           </Link>
           <span className="text-muted-foreground/40">/</span>
           <span className="text-sm font-600 text-foreground">Question Paper Analyzer</span>
-          {step === 'configure' && <><span className="text-muted-foreground/40">/</span><span className="text-sm font-600 text-primary">Configure Sections</span></>}
         </div>
         <div className="flex items-center gap-2">
           {step === 'done' && extractedPaper && (
@@ -399,11 +437,11 @@ Rules:
                   </div>
                 )}
 
-                <button onClick={() => { if (file) setStep('configure'); }}
+                <button onClick={() => { if (file) handleAnalyze(); }}
                   disabled={!file}
                   className="mt-6 w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-600 py-3 rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <Settings2 size={18} /> Configure Sections &amp; Analyze
+                  <BookOpen size={18} /> Analyze with AI
                 </button>
               </>
             )}
@@ -418,10 +456,10 @@ Rules:
                   }}
                 />
                 {cameraPages.length > 0 && (
-                  <button onClick={() => setStep('configure')}
+                  <button onClick={handleAnalyze}
                     className="mt-4 w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-600 py-3 rounded-xl hover:bg-primary/90 transition-colors text-sm"
                   >
-                    <Settings2 size={18} /> Configure Sections &amp; Analyze
+                    <BookOpen size={18} /> Analyze with AI ({cameraPages.length} page{cameraPages.length !== 1 ? 's' : ''})
                   </button>
                 )}
               </>
@@ -432,7 +470,7 @@ Rules:
               <ScannerCapture confirmLabel="Analyze Scanned Paper with AI"
                 onCapture={(scannedPages) => {
                   setFile(scannedPages[0]); setInputMode('upload');
-                  toast.success(`${scannedPages.length} page${scannedPages.length > 1 ? 's' : ''} scanned — ready to configure`);
+                  toast.success(`${scannedPages.length} page${scannedPages.length > 1 ? 's' : ''} scanned — ready to analyze`);
                 }}
               />
             )}
@@ -441,7 +479,7 @@ Rules:
             <div className="mt-8 grid grid-cols-3 gap-4">
               {[
                 { icon: FileText,   title: 'Auto-Extraction', desc: 'Extracts all questions, sections, and marks automatically' },
-                { icon: Settings2,  title: 'Section Config',  desc: 'Define each section\'s marks before AI analysis for precision' },
+                { icon: Settings2,  title: 'AI Auto-Detect',  desc: 'Sections, marks, and question types detected automatically from the paper' },
                 { icon: ArrowRight, title: 'Seamless Flow',   desc: 'Directly proceed to evaluate answer sheets with full context' },
               ].map((card) => (
                 <div key={card.title} className="p-4 bg-card border border-border rounded-xl">
@@ -454,181 +492,134 @@ Rules:
           </div>
         )}
 
-        {/* ── CONFIGURE SECTIONS STEP ──────────────────────────────────────── */}
-        {step === 'configure' && (
-          <div className="max-w-3xl mx-auto">
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-1">
-                <Settings2 size={20} className="text-primary" />
-                <h1 className="text-2xl font-700 text-foreground">Configure Paper Sections</h1>
-              </div>
-              <p className="text-muted-foreground text-sm">
-                Define your paper's section structure before AI analysis. The AI will use this to assign accurate marks to each question.
-              </p>
-            </div>
-
-            {/* File info banner */}
-            <div className="flex items-center gap-3 px-4 py-3 bg-positive-bg border border-positive/20 rounded-xl mb-6">
-              <CheckCircle2 size={15} className="text-positive shrink-0" />
-              <p className="text-sm font-600 text-foreground flex-1 truncate">
-                {file?.name ?? `${cameraPages.length} camera page${cameraPages.length !== 1 ? 's' : ''}`}
-              </p>
-              <button onClick={() => setStep('upload')} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-                <X size={12} /> Change file
-              </button>
-            </div>
-
-            {/* Section table */}
-            <div className="bg-card border border-border rounded-2xl overflow-hidden mb-5">
-              {/* Table header */}
-              <div className="grid grid-cols-[48px_1fr_140px_100px_90px_100px_40px] gap-3 px-5 py-3 bg-muted/50 border-b border-border text-[10px] font-700 text-muted-foreground uppercase tracking-wider">
-                <span>Sec</span>
-                <span>Label / Description</span>
-                <span>Questions</span>
-                <span>Marks / Q</span>
-                <span>Total</span>
-                <span>Attempt Any</span>
-                <span></span>
-              </div>
-
-              {/* Section rows */}
-              {sections.map((sec) => {
-                const total = sec.numQuestions * sec.marksPerQ;
-                return (
-                  <div key={sec.id} className="grid grid-cols-[48px_1fr_140px_100px_90px_100px_40px] gap-3 items-center px-5 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                    {/* Section name */}
-                    <input
-                      value={sec.name}
-                      onChange={(e) => updateSection(sec.id, 'name', e.target.value.toUpperCase().slice(0, 2))}
-                      className="w-10 h-9 text-center text-sm font-700 text-primary border border-border rounded-lg bg-primary/5 outline-none focus:border-primary"
-                    />
-                    {/* Label */}
-                    <input
-                      value={sec.label}
-                      onChange={(e) => updateSection(sec.id, 'label', e.target.value)}
-                      placeholder="e.g. Objective Questions"
-                      className="w-full h-9 text-sm text-foreground border border-border rounded-lg px-3 bg-background outline-none focus:border-primary"
-                    />
-                    {/* Num questions */}
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number" min={1} max={200}
-                        value={sec.numQuestions}
-                        onChange={(e) => updateSection(sec.id, 'numQuestions', Math.max(1, Number(e.target.value)))}
-                        className="w-full h-9 text-sm font-600 text-center text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary"
-                      />
-                      <span className="text-xs text-muted-foreground shrink-0">qs</span>
-                    </div>
-                    {/* Marks per Q */}
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number" min={0.5} max={50} step={0.5}
-                        value={sec.marksPerQ}
-                        onChange={(e) => updateSection(sec.id, 'marksPerQ', Math.max(0.5, Number(e.target.value)))}
-                        className="w-full h-9 text-sm font-600 text-center text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary"
-                      />
-                      <span className="text-xs text-muted-foreground shrink-0">m</span>
-                    </div>
-                    {/* Total (read-only) */}
-                    <div className="h-9 flex items-center justify-center rounded-lg bg-muted/50 border border-border">
-                      <span className="text-sm font-700 text-foreground">{total}</span>
-                    </div>
-                    {/* Attempt any */}
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number" min={0} max={sec.numQuestions}
-                        value={sec.attemptAny === 0 ? '' : sec.attemptAny}
-                        placeholder="All"
-                        onChange={(e) => updateSection(sec.id, 'attemptAny', e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
-                        className="w-full h-9 text-sm font-600 text-center text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary placeholder:text-muted-foreground/60"
-                      />
-                    </div>
-                    {/* Delete */}
-                    <button onClick={() => removeSection(sec.id)}
-                      disabled={sections.length <= 1}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                );
-              })}
-
-              {/* Totals row */}
-              <div className="grid grid-cols-[48px_1fr_140px_100px_90px_100px_40px] gap-3 items-center px-5 py-3 bg-muted/30 border-t border-border">
-                <span></span>
-                <span className="text-xs font-700 text-muted-foreground uppercase tracking-wider">Total</span>
-                <span className="text-center text-sm font-700 text-foreground">
-                  {sections.reduce((s, x) => s + x.numQuestions, 0)} qs
-                </span>
-                <span></span>
-                <span className="text-center text-sm font-700 text-primary">
-                  {sections.reduce((s, x) => s + x.numQuestions * x.marksPerQ, 0)} m
-                </span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-
-            {/* Add section button */}
-            <button onClick={addSection}
-              className="flex items-center gap-2 text-sm font-600 text-primary hover:text-primary/80 px-4 py-2.5 rounded-xl border-2 border-dashed border-primary/30 hover:border-primary/60 hover:bg-primary/5 transition-all w-full justify-center mb-6"
-            >
-              <Plus size={15} /> Add Another Section
-            </button>
-
-            {/* Attempt any hint */}
-            <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl mb-6 text-sm text-amber-800">
-              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-              <p><strong>Attempt Any:</strong> Enter a number if students must answer only X out of Y questions in a section (e.g., any 5 of 8). Leave blank if all questions are required.</p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button onClick={() => setStep('upload')}
-                className="flex items-center gap-2 px-5 py-3 rounded-xl border border-border text-sm font-600 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                <ChevronLeft size={15} /> Back
-              </button>
-              <button onClick={handleAnalyze}
-                disabled={sections.length === 0}
-                className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground font-700 py-3 rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 text-sm"
-              >
-                <BookOpen size={17} />
-                Analyze with AI ({sections.length} section{sections.length !== 1 ? 's' : ''} · {sections.reduce((s, x) => s + x.numQuestions * x.marksPerQ, 0)} marks)
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* ── ANALYZING STEP ───────────────────────────────────────────────── */}
-        {step === 'analyzing' && (
-          <div className="max-w-2xl mx-auto flex flex-col items-center justify-center py-24 gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Loader2 size={36} className="text-primary animate-spin" />
-            </div>
-            <div className="text-center">
-              <h2 className="text-xl font-700 text-foreground mb-2">Analyzing Question Paper…</h2>
-              <p className="text-muted-foreground text-sm">
-                AI is reading sections with your mark configuration. This may take a few seconds.
+        {step === 'analyzing' && (() => {
+          const STEPS = [
+            {
+              icon: FileText,
+              label: 'Reading Document Structure',
+              desc: 'Scanning pages, headers, and layout patterns',
+            },
+            {
+              icon: Layers,
+              label: 'Applying Section Mark Config',
+              desc: 'Mapping your defined marks to each section',
+            },
+            {
+              icon: Brain,
+              label: 'Extracting Marks Allocation',
+              desc: 'Identifying every question with correct marks',
+            },
+            {
+              icon: Tags,
+              label: 'Classifying Question Types',
+              desc: 'Categorising MCQ, theory, numerical, diagram',
+            },
+          ];
+          const completedCount = activeSubStep; // steps before activeSubStep are done
+          const progressPct = Math.round((completedCount / STEPS.length) * 100);
+
+          return (
+            <div className="max-w-xl mx-auto py-16 px-4 flex flex-col items-center gap-8">
+              {/* Hero icon */}
+              <div className="relative">
+                <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center shadow-lg">
+                  <Sparkles size={38} className="text-primary" />
+                </div>
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                  <Loader2 size={12} className="text-white animate-spin" />
+                </span>
+              </div>
+
+              {/* Title */}
+              <div className="text-center space-y-2">
+                <h2 className="text-3xl font-800 text-foreground tracking-tight">Analyzing Question Paper</h2>
+                <p className="text-base text-muted-foreground max-w-sm leading-relaxed">
+                  AI is reading your paper and applying your section configuration to extract every question precisely.
+                </p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full max-w-sm space-y-1.5">
+                <div className="flex justify-between text-xs font-600 text-muted-foreground">
+                  <span>Progress</span>
+                  <span>{progressPct}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-primary to-primary/70 transition-all duration-700 ease-out"
+                    style={{ width: `${Math.max(progressPct, 6)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Step cards */}
+              <div className="w-full max-w-sm flex flex-col gap-3">
+                {STEPS.map((s, i) => {
+                  const isDone = i < activeSubStep;
+                  const isActive = i === activeSubStep;
+                  const isPending = i > activeSubStep;
+                  return (
+                    <div
+                      key={s.label}
+                      className={`flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all duration-500 ${
+                        isDone
+                          ? 'bg-green-50 border-green-200'
+                          : isActive
+                          ? 'bg-primary/5 border-primary/30 shadow-sm'
+                          : 'bg-muted/40 border-border opacity-50'
+                      }`}
+                    >
+                      {/* Icon bubble */}
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-500 ${
+                        isDone ? 'bg-green-100' : isActive ? 'bg-primary/10' : 'bg-muted'
+                      }`}>
+                        {isDone ? (
+                          <CheckCircle2 size={20} className="text-green-600" />
+                        ) : isActive ? (
+                          <Loader2 size={20} className="text-primary animate-spin" />
+                        ) : (
+                          <s.icon size={18} className="text-muted-foreground" />
+                        )}
+                      </div>
+
+                      {/* Text */}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-700 leading-tight ${
+                          isDone ? 'text-green-700' : isActive ? 'text-foreground' : 'text-muted-foreground'
+                        }`}>
+                          {s.label}
+                        </p>
+                        <p className={`text-xs mt-0.5 leading-tight ${
+                          isDone ? 'text-green-600/80' : isActive ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                        }`}>
+                          {isDone ? 'Completed' : s.desc}
+                        </p>
+                      </div>
+
+                      {/* Status pill */}
+                      <span className={`text-[10px] font-700 px-2.5 py-1 rounded-full shrink-0 ${
+                        isDone ? 'bg-green-100 text-green-700' : isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {isDone ? 'Done' : isActive ? 'Active' : 'Waiting'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-muted-foreground/60 text-center">
+                Powered by Gemini · This may take 10–30 seconds for large papers
               </p>
             </div>
-            <div className="flex flex-col gap-2 w-full max-w-sm">
-              {['Reading document structure', 'Applying section mark config', 'Extracting marks allocation', 'Classifying question types'].map((s, i) => (
-                <div key={s} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 size={12} className="text-primary animate-spin shrink-0" style={{ animationDelay: `${i * 0.2}s` }} />
-                  {s}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── DONE STEP ────────────────────────────────────────────────────── */}
         {step === 'done' && extractedPaper && (
           <ExtractedQuestionsPanel
             paper={extractedPaper}
-            sectionConfig={sections}
+            sectionConfig={[]}
             fileName={file?.name || ''}
             onReset={handleReset}
             onUpdate={(updated) => setExtractedPaper(updated)}
