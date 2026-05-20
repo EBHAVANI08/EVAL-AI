@@ -179,7 +179,7 @@ export default function EvaluatorWorkspace() {
     name: '', rollNo: '', class: '', school: '', subject: '', board: '',
   });
   const [mobilePanel, setMobilePanel] = useState<'student' | 'questions' | 'score' | 'behavior'>('questions');
-  const [preloadedUpload, setPreloadedUpload] = useState<{ base64Data: string; mimeType: string; studentName: string; rollNo: string; subject: string; grade: string } | null>(null);
+  const [preloadedUpload, setPreloadedUpload] = useState<{ base64Data: string; mimeType: string; studentName: string; rollNo: string; studentEmail: string; subject: string; grade: string } | null>(null);
   const [behaviorAnalysis, setBehaviorAnalysis] = useState<BehaviorAnalysis | null>(null);
   const [behaviorLoading, setBehaviorLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -204,6 +204,7 @@ export default function EvaluatorWorkspace() {
           mimeType: data.mimeType,
           studentName: data.studentName,
           rollNo: data.rollNo,
+          studentEmail: data.studentEmail ?? '',
           subject: data.subject,
           grade: data.grade,
         });
@@ -822,6 +823,8 @@ Output the JSON array now:`;
               : {},
             questions: evaluated,
             ...(imagesToStore.length > 0 && { scannedImages: imagesToStore }),
+            // Link evaluation to student account by email (more reliable than rollNo)
+            ...(preloadedUpload?.studentEmail ? { studentEmail: preloadedUpload.studentEmail } : {}),
           }),
         });
         if (saveRes.ok) {

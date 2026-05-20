@@ -35,6 +35,38 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/* PATCH /api/evaluations/message  — mark one or all messages as read
+   Body: { id?: string }  — omit id to mark all unread as read */
+export async function PATCH(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const db = await getDb();
+
+    if (body.id) {
+      const { ObjectId } = await import('mongodb');
+      await db.collection('student_messages').updateOne(
+        { _id: new ObjectId(body.id) },
+        { $set: { read: true } },
+      );
+    } else {
+      await db.collection('student_messages').updateMany(
+        { read: false },
+        { $set: { read: true } },
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('PATCH /api/evaluations/message error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
 /* GET /api/evaluations/message?evaluationId=xxx
    Teacher fetches messages for a given evaluation. */
 export async function GET(req: NextRequest) {

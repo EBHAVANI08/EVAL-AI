@@ -54,7 +54,7 @@ function buildTrainingData(questions: any[]) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { studentInfo, paperInfo, questions, scannedImages } = body;
+    const { studentInfo, paperInfo, questions, scannedImages, studentEmail } = body;
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
       return NextResponse.json({ error: 'questions array is required' }, { status: 400 });
@@ -71,6 +71,8 @@ export async function POST(request: NextRequest) {
       paperInfo: paperInfo || {},
       questions,
       trainingData: buildTrainingData(questions),
+      // Store student email for reliable cross-reference (rollNo can be absent or duplicate)
+      ...(studentEmail ? { studentEmail } : {}),
     };
 
     if (Array.isArray(scannedImages) && scannedImages.length > 0) {
@@ -93,12 +95,26 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, parseInt(searchParams.get('limit') || '20', 10));
     const skip = (page - 1) * limit;
 
-    const rollNo = searchParams.get('rollNo');
+    const rollNo  = searchParams.get('rollNo');
+    const email   = searchParams.get('email');
     const subject = searchParams.get('subject');
 
     const db = await getDb();
     const query: any = {};
-    if (rollNo) query['studentInfo.rollNo'] = rollNo;
+
+    // Match by rollNo OR studentEmail so evaluations always appear for the student
+    if (rollNo && email) {
+      query.$or = [
+        { 'studentInfo.rollNo': rollNo },
+        { studentEmail: email },
+        { 'studentInfo.email': email },
+      ];
+    } else if (rollNo) {
+      query['studentInfo.rollNo'] = rollNo;
+    } else if (email) {
+      query.$or = [{ studentEmail: email }, { 'studentInfo.email': email }];
+    }
+
     if (subject) query['studentInfo.subject'] = subject;
 
     const [rows, total] = await Promise.all([

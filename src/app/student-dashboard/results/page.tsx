@@ -299,13 +299,14 @@ export default function ResultsPage() {
   const [msgSent, setMsgSent]             = useState(false);
 
   const rollNo = (session?.user as any)?.rollNo;
+  const email  = session?.user?.email;
 
   const load = () => {
     setLoading(true);
-    const url = rollNo
-      ? `/api/evaluations?rollNo=${encodeURIComponent(rollNo)}&limit=50`
-      : '/api/evaluations?limit=50';
-    fetch(url)
+    const params = new URLSearchParams({ limit: '50' });
+    if (rollNo) params.set('rollNo', rollNo);
+    if (email)  params.set('email', email);
+    fetch(`/api/evaluations?${params.toString()}`)
       .then((r) => r.json())
       .then((d) => setEvals(d.evaluations ?? []))
       .catch(() => {})

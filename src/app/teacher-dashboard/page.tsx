@@ -6,6 +6,7 @@ import ChartsRow from './components/ChartsRow';
 import RecentEvaluationsTable from './components/RecentEvaluationsTable';
 import ActivityFeed from './components/ActivityFeed';
 import StudentSubmissionsPanel from './components/StudentSubmissionsPanel';
+import TeacherMessagesInbox from './components/TeacherMessagesInbox';
 
 export default function TeacherDashboardPage() {
   return (
@@ -19,7 +20,8 @@ export default function TeacherDashboardPage() {
             <StudentSubmissionsPanel />
             <RecentEvaluationsTable />
           </div>
-          <div className="xl:col-span-1">
+          <div className="xl:col-span-1 space-y-6">
+            <TeacherMessagesInbox />
             <ActivityFeed />
           </div>
         </div>
