@@ -1119,12 +1119,8 @@ Output the JSON array now:`;
             </div>
           </div>
 
-          {/* Input mode tabs — hidden when a student submission is pre-loaded */}
-          {preloadedUpload && (
-            <p className="text-xs text-center text-muted-foreground">
-              Student&apos;s answer sheet is pre-loaded above. Click <strong>Start AI Evaluation</strong> to begin, or upload a different file below to override.
-            </p>
-          )}
+          {/* Manual upload section — hidden when a student submission is pre-loaded */}
+          {!preloadedUpload && <>
           <div className="flex gap-1 p-1 bg-muted rounded-xl">
             {([
               { mode: 'upload', icon: Upload, label: 'Upload File' },
@@ -1265,6 +1261,7 @@ Output the JSON array now:`;
               ? `Evaluate ${scannedPages.length} ${inputMode === 'camera' ? 'Camera' : 'Scanned'} Pages with AI`
               : 'Evaluate Answer Sheet with AI'}
           </button>
+          </>}
 
         </div>
       </div>
