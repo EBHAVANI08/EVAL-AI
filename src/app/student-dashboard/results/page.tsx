@@ -466,6 +466,40 @@ export default function ResultsPage() {
           </div>
         </motion.div>
 
+        {/* Ask Teacher — inline below title so it's visible on click */}
+        <AnimatePresence>
+          {msgOpen && (
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden mb-5">
+              <div className="bg-white border border-[#7C3AED]/20 rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <MessageSquare size={15} className="text-[#7C3AED]" />
+                  <h3 className="font-bold text-[#0A0F1E] text-sm">Ask the Teacher</h3>
+                  <button onClick={() => setMsgOpen(false)} className="ml-auto text-[#94A3B8] hover:text-[#0A0F1E] transition-colors">✕</button>
+                </div>
+                {msgSent ? (
+                  <div className="flex items-center gap-2 justify-center py-6 text-green-600">
+                    <CheckCheck size={20} /><span className="text-sm font-semibold">Message sent to your teacher!</span>
+                  </div>
+                ) : (
+                  <>
+                    <textarea value={msgText} onChange={(e) => setMsgText(e.target.value)}
+                      placeholder="e.g. I think question 6 should have partial marks because…"
+                      rows={3} className="w-full text-sm border border-[#E8EFFE] rounded-xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 resize-none" />
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-xs text-[#94A3B8]">{msgText.length}/500</span>
+                      <button onClick={sendMessage} disabled={msgSending || !msgText.trim() || msgText.length > 500}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7C3AED] text-white text-sm font-semibold hover:bg-[#6D28D9] transition-all disabled:opacity-50">
+                        {msgSending ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : <><Send size={14} /> Send</>}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* 3-column panels */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
 
@@ -655,39 +689,6 @@ export default function ResultsPage() {
             <BehaviorAnalysisPanel analysis={detail.behaviorAnalysis} isLoading={false} />
           </div>
         )}
-
-        {/* Ask Teacher */}
-        <AnimatePresence>
-          {msgOpen && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden mb-5">
-              <div className="bg-white border border-[#7C3AED]/20 rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-3">
-                  <MessageSquare size={15} className="text-[#7C3AED]" />
-                  <h3 className="font-bold text-[#0A0F1E] text-sm">Ask the Teacher</h3>
-                </div>
-                {msgSent ? (
-                  <div className="flex items-center gap-2 justify-center py-6 text-green-600">
-                    <CheckCheck size={20} /><span className="text-sm font-semibold">Message sent!</span>
-                  </div>
-                ) : (
-                  <>
-                    <textarea value={msgText} onChange={(e) => setMsgText(e.target.value)}
-                      placeholder="e.g. I think question 6 should have partial marks because…"
-                      rows={3} className="w-full text-sm border border-[#E8EFFE] rounded-xl px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 resize-none" />
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-[#94A3B8]">{msgText.length}/500</span>
-                      <button onClick={sendMessage} disabled={msgSending || !msgText.trim() || msgText.length > 500}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7C3AED] text-white text-sm font-semibold hover:bg-[#6D28D9] transition-all disabled:opacity-50">
-                        {msgSending ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : <><Send size={14} /> Send</>}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Next Steps */}
         <motion.div {...panelAnim(0.3)} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
