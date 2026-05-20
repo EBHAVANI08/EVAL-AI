@@ -403,9 +403,20 @@ export default function EvaluatorWorkspace() {
           throw new Error('All AI models are busy. Please try again in a minute.');
         }
 
-        // Non-retryable error
+        // Non-retryable error (e.g. 400) — try next model before giving up
+        if (mi < evalModels.length - 1) {
+          const errPreview = await res.clone().text().catch(() => '');
+          toast.loading(`Model error (${res.status}) — switching to fallback model…`, { id: 'gemini-retry' });
+          console.warn(`Gemini ${res.status} on ${model}:`, errPreview.slice(0, 200));
+          break; // break inner loop → continue modelLoop
+        }
         const errText = await res.text().catch(() => '');
         toast.dismiss('gemini-retry');
+        // Surface a clear message for known PDF errors
+        const isPdfErr = errText.includes('no pages') || errText.includes('INVALID_ARGUMENT');
+        if (isPdfErr) {
+          throw new Error('PDF_NO_PAGES');
+        }
         throw new Error(`Gemini error (${res.status}): ${errText.slice(0, 200)}`);
       }
     }
@@ -923,13 +934,22 @@ Output the JSON array now:`;
       }
     } catch (err: any) {
       const msg: string = err?.message || 'Evaluation failed';
-      setEvalError(msg);
       setEvalStep('upload');
-      if (msg.toLowerCase().includes('rate limit') || msg.includes('429')) {
+
+      if (msg === 'PDF_NO_PAGES') {
+        // PDF stored in DB could not be read by any Gemini model.
+        // Clear the preloaded upload so the teacher can upload the file manually.
+        setPreloadedUpload(null);
+        setEvalError('The student\'s PDF could not be read by AI (the file may be corrupted or password-protected). Please ask the student to re-upload, or download the file and upload it manually below.');
+        toast.error('PDF could not be read — please upload the file manually.');
+      } else if (msg.toLowerCase().includes('rate limit') || msg.includes('429')) {
+        setEvalError(msg);
         toast.error('Gemini rate limit — wait 30–60 seconds then retry.');
       } else if (msg.toLowerCase().includes('server error') || msg.includes('500') || msg.includes('503')) {
+        setEvalError(msg);
         toast.error('Gemini server error — try a smaller or clearer image and retry.');
       } else {
+        setEvalError(msg);
         toast.error('Evaluation failed. Please try again.');
       }
     }
