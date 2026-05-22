@@ -5,12 +5,13 @@ import Link from 'next/link';
 import {
   ChevronLeft, Upload, FileText, Loader2, CheckCircle2, AlertTriangle,
   ArrowRight, X, BookOpen, ScanLine, Camera, Settings2,
-  Sparkles, Brain, Layers, Tags,
+  Sparkles, Brain, Layers, Tags, FolderUp, Plus, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { callGeminiVision } from '@/lib/gemini-client';
 import ExtractedQuestionsPanel from './ExtractedQuestionsPanel';
 import dynamic from 'next/dynamic';
+import { CBSE_CURRICULUM, getSubjectsForGrade, getChaptersForSubject } from '@/lib/cbse-curriculum';
 
 const ScannerCapture = dynamic(() => import('@/components/ui/ScannerCapture'), { ssr: false });
 const CameraScanner = dynamic(() => import('@/components/ui/CameraScanner'), { ssr: false });
@@ -56,6 +57,8 @@ export type SectionConfig = {
 
 type Step = 'upload' | 'analyzing' | 'done' | 'error';
 
+// ── Bulk upload types ─────────────────────────────────────────────────────────
+type BulkFile = { id: string; file: File };
 
 async function compressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -94,7 +97,7 @@ async function uploadPdfToGemini(file: File): Promise<{ base64Data: string; mime
 
 export default function QuestionPaperAnalyzerClient() {
   const [step, setStep] = useState<Step>('upload');
-  const [inputMode, setInputMode] = useState<'upload' | 'scan' | 'camera'>('upload');
+  const [inputMode, setInputMode] = useState<'upload' | 'scan' | 'camera' | 'bulk'>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [cameraPages, setCameraPages] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -102,6 +105,33 @@ export default function QuestionPaperAnalyzerClient() {
   const [errorMsg, setErrorMsg] = useState('');
   const [activeSubStep, setActiveSubStep] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Bulk upload state ───────────────────────────────────────────────────────
+  const [bulkFiles, setBulkFiles] = useState<BulkFile[]>([]);
+  const [bulkGrade, setBulkGrade] = useState('');
+  const [bulkSubject, setBulkSubject] = useState('');
+  const [bulkChapters, setBulkChapters] = useState<string[]>([]);
+  const [bulkDragOver, setBulkDragOver] = useState(false);
+  const [chaptersOpen, setChaptersOpen] = useState(false);
+
+  const bulkSubjects = getSubjectsForGrade(bulkGrade);
+  const bulkChapterList = getChaptersForSubject(bulkGrade, bulkSubject);
+
+  const addBulkFiles = (files: File[]) => {
+    const valid = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    const toAdd: BulkFile[] = [];
+    for (const f of files) {
+      if (!valid.includes(f.type)) { toast.error(`${f.name}: only PDF/JPG/PNG allowed`); continue; }
+      if (f.size > 50 * 1024 * 1024) { toast.error(`${f.name}: max 50 MB`); continue; }
+      if (bulkFiles.length + toAdd.length >= 10) { toast.error('Maximum 10 files per bulk analysis'); break; }
+      toAdd.push({ id: crypto.randomUUID(), file: f });
+    }
+    if (toAdd.length) setBulkFiles((prev) => [...prev, ...toAdd]);
+  };
+
+  const toggleBulkChapter = (id: string) =>
+    setBulkChapters((prev) => prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]);
 
   // Drive the sequential step animation while analyzing
   useEffect(() => {
@@ -129,8 +159,14 @@ export default function QuestionPaperAnalyzerClient() {
   // No section config needed — AI auto-detects everything from the paper
 
   // ── Analyze a single file ─────────────────────────────────────────────────
-  const analyzeFile = async (f: File, visionPayload?: Record<string, string>): Promise<ExtractedPaper> => {
-    if (!visionPayload) {
+  const analyzeFile = async (f: File, visionPayload?: Record<string, string> & { prompt?: string }): Promise<ExtractedPaper> => {
+    const overridePrompt = visionPayload?.prompt;
+    if (overridePrompt) {
+      // Remove the prompt key so it's not sent as part of the vision payload
+      const { prompt: _p, ...cleanPayload } = visionPayload as any;
+      visionPayload = cleanPayload;
+    }
+    if (!visionPayload || (!visionPayload.base64Data && !visionPayload.fileUri)) {
       if (f.type === 'application/pdf') {
         const { base64Data, mimeType } = await uploadPdfToGemini(f);
         visionPayload = { base64Data, mimeType };
@@ -230,7 +266,7 @@ RULE 10 — sectionConstraints: if a section says "attempt any X of Y", set atte
 
 RULE 11 — Return ONLY the JSON object. No markdown. No explanation. No extra text.`;
 
-    const { text: raw, finishReason } = await callGeminiVision({ ...visionPayload, prompt });
+    const { text: raw, finishReason } = await callGeminiVision({ ...visionPayload, prompt: overridePrompt ?? prompt });
 
     const start = raw.indexOf('{');
     if (start === -1) throw new Error(`No JSON found in AI response. Raw (first 300 chars): ${raw.slice(0, 300)}`);
@@ -333,12 +369,130 @@ RULES:
     }
   };
 
+  // ── Bulk analysis ───────────────────────────────────────────────────────────
+  const handleBulkAnalyze = async () => {
+    if (bulkFiles.length === 0) return;
+    setStep('analyzing');
+    setErrorMsg('');
+
+    const selectedChapterNames = bulkChapterList
+      .filter((c) => bulkChapters.includes(c.id))
+      .map((c) => c.name);
+
+    const chaptersHint = selectedChapterNames.length > 0
+      ? `Focus on these CBSE chapters: ${selectedChapterNames.join(', ')}.`
+      : 'Cover all chapters relevant to the subject.';
+
+    const metaHint = bulkGrade && bulkSubject
+      ? `CBSE Class ${bulkGrade} | Subject: ${bulkSubject}. ${chaptersHint}`
+      : '';
+
+    try {
+      let merged: ExtractedPaper | null = null;
+      let globalQIdx = 1;
+
+      for (let i = 0; i < bulkFiles.length; i++) {
+        const { file: f } = bulkFiles[i];
+        toast.loading(`Analyzing file ${i + 1}/${bulkFiles.length}: ${f.name}…`, { id: 'bulk-progress' });
+
+        let visionPayload: Record<string, string>;
+        if (f.type === 'application/pdf') {
+          const { base64Data, mimeType } = await uploadPdfToGemini(f);
+          visionPayload = { base64Data, mimeType };
+        } else {
+          const dataUri = await compressImage(f);
+          const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);
+          if (!match) continue;
+          visionPayload = { mimeType: match[1], base64Data: match[2] };
+        }
+
+        const bulkPrompt = `You are a CBSE question paper expert. Analyze this document and GENERATE exam-ready questions from its content.
+${metaHint}
+
+Return ONLY valid JSON (no markdown):
+{
+  "metadata": {
+    "subject": "${bulkSubject || 'Auto-detect'}",
+    "class": "${bulkGrade ? `Class ${bulkGrade}` : 'Auto-detect'}",
+    "board": "CBSE",
+    "totalMarks": 0,
+    "duration": "",
+    "sections": ["A","B","C"]
+  },
+  "questions": [
+    { "qNo": "1", "section": "A", "questionText": "...(A) opt1 (B) opt2 (C) opt3 (D) opt4", "maxMarks": 1, "type": "mcq" },
+    { "qNo": "2", "section": "B", "questionText": "...", "maxMarks": 2, "type": "short" },
+    { "qNo": "3", "section": "C", "questionText": "...", "maxMarks": 5, "type": "theory" }
+  ]
+}
+
+RULES:
+1. Generate questions BASED ON the content in this document — extract key concepts and turn them into exam questions.
+2. Mix question types: MCQ (Section A, 1 mark), Short Answer (Section B, 2-3 marks), Long/Theory (Section C, 5 marks).
+3. If this document IS a question paper, extract the existing questions exactly as they appear.
+4. If this is notes/textbook content, generate meaningful questions from the topics.
+5. Question numbering: start from ${globalQIdx} and increment.
+6. questionText: max 200 characters per entry.
+7. MCQ: include all 4 options in questionText.
+8. Return ONLY the JSON object. No explanation.`;
+
+        try {
+          const result = await analyzeFile(f, { ...visionPayload, prompt: bulkPrompt } as any);
+          // Re-number questions to avoid conflicts
+          result.questions = result.questions.map((q, qi) => ({
+            ...q,
+            qNo: String(globalQIdx + qi),
+          }));
+          globalQIdx += result.questions.length;
+
+          if (!merged) {
+            merged = {
+              metadata: {
+                subject: bulkSubject || result.metadata.subject,
+                class: bulkGrade ? `Class ${bulkGrade}` : result.metadata.class,
+                board: 'CBSE',
+                totalMarks: 0,
+                duration: '',
+                sections: ['A', 'B', 'C'],
+              },
+              questions: [...result.questions],
+            };
+          } else {
+            merged.questions.push(...result.questions);
+          }
+        } catch (e: any) {
+          toast.error(`File ${i + 1} failed: ${e.message?.slice(0, 60) || 'Error'}`);
+        }
+      }
+
+      toast.dismiss('bulk-progress');
+      if (!merged || merged.questions.length === 0) {
+        throw new Error('No questions could be extracted from the uploaded files.');
+      }
+
+      // Recalculate total marks
+      merged.metadata.totalMarks = merged.questions.reduce((s, q) => s + q.maxMarks, 0);
+
+      setExtractedPaper(merged);
+      setStep('done');
+      toast.success(`Generated ${merged.questions.length} questions from ${bulkFiles.length} file(s)!`);
+    } catch (err: any) {
+      toast.dismiss('bulk-progress');
+      setErrorMsg(err?.message || 'Bulk analysis failed');
+      setStep('error');
+      toast.error('Bulk analysis failed. Please try again.');
+    }
+  };
+
   const handleReset = () => {
     setStep('upload'); setFile(null); setCameraPages([]);
     setExtractedPaper(null); setErrorMsg('');
+    setBulkFiles([]); setBulkChapters([]);
   };
 
-  const readyToAnalyze = inputMode === 'upload' ? !!file : cameraPages.length > 0;
+  const readyToAnalyze = inputMode === 'upload' ? !!file
+    : inputMode === 'bulk' ? bulkFiles.length > 0
+    : cameraPages.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -381,10 +535,11 @@ RULES:
             {/* Input mode tabs */}
             <div className="flex gap-1 p-1 bg-muted rounded-xl mb-6">
               {([
-                { mode: 'upload', icon: Upload,   label: 'Upload File' },
-                { mode: 'camera', icon: Camera,   label: 'Camera Scan' },
-                { mode: 'scan',   icon: ScanLine, label: 'Import Files' },
-              ] as { mode: 'upload' | 'camera' | 'scan'; icon: React.ElementType; label: string }[]).map(({ mode, icon: Icon, label }) => (
+                { mode: 'upload', icon: Upload,    label: 'Upload File' },
+                { mode: 'bulk',   icon: FolderUp,  label: 'Bulk Upload' },
+                { mode: 'camera', icon: Camera,    label: 'Camera Scan' },
+                { mode: 'scan',   icon: ScanLine,  label: 'Import Files' },
+              ] as { mode: 'upload' | 'bulk' | 'camera' | 'scan'; icon: React.ElementType; label: string }[]).map(({ mode, icon: Icon, label }) => (
                 <button key={mode}
                   onClick={() => { setInputMode(mode); setFile(null); setCameraPages([]); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-600 transition-colors ${inputMode === mode ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
@@ -444,6 +599,156 @@ RULES:
                   <BookOpen size={18} /> Analyze with AI
                 </button>
               </>
+            )}
+
+            {/* ── Bulk Upload mode ───────────────────────────────────────────────── */}
+            {inputMode === 'bulk' && (
+              <div className="space-y-5">
+                {/* CBSE curriculum selector */}
+                <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BookOpen size={15} className="text-primary" />
+                    <p className="text-sm font-700 text-foreground">CBSE Curriculum (optional)</p>
+                    <span className="text-xs text-muted-foreground ml-1">— helps AI align questions with syllabus</span>
+                  </div>
+
+                  {/* Grade + Subject row */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-600 text-muted-foreground mb-1.5">Grade</label>
+                      <select
+                        value={bulkGrade}
+                        onChange={(e) => { setBulkGrade(e.target.value); setBulkSubject(''); setBulkChapters([]); }}
+                        className="input-field text-sm w-full"
+                      >
+                        <option value="">All grades</option>
+                        {CBSE_CURRICULUM.map((g) => (
+                          <option key={g.value} value={g.value}>{g.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-600 text-muted-foreground mb-1.5">Subject</label>
+                      <select
+                        value={bulkSubject}
+                        onChange={(e) => { setBulkSubject(e.target.value); setBulkChapters([]); }}
+                        disabled={!bulkGrade}
+                        className="input-field text-sm w-full disabled:opacity-50"
+                      >
+                        <option value="">All subjects</option>
+                        {bulkSubjects.map((s) => (
+                          <option key={s.name} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Chapters accordion */}
+                  {bulkSubject && bulkChapterList.length > 0 && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setChaptersOpen((v) => !v)}
+                        className="flex items-center justify-between w-full text-xs font-600 text-muted-foreground hover:text-foreground transition-colors py-1"
+                      >
+                        <span>
+                          Chapters
+                          {bulkChapters.length > 0 && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-700">
+                              {bulkChapters.length} selected
+                            </span>
+                          )}
+                        </span>
+                        {chaptersOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </button>
+                      {chaptersOpen && (
+                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-1">
+                          {bulkChapterList.map((ch) => (
+                            <label key={ch.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:border-primary/30 hover:bg-primary/5 cursor-pointer transition-colors text-xs">
+                              <input
+                                type="checkbox"
+                                checked={bulkChapters.includes(ch.id)}
+                                onChange={() => toggleBulkChapter(ch.id)}
+                                className="accent-primary w-3.5 h-3.5 shrink-0"
+                              />
+                              <span className="text-foreground leading-snug">{ch.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* File drop zone */}
+                <div
+                  className={`border-2 border-dashed rounded-xl p-7 text-center transition-colors cursor-pointer ${bulkDragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30'}`}
+                  onDragOver={(e) => { e.preventDefault(); setBulkDragOver(true); }}
+                  onDragLeave={() => setBulkDragOver(false)}
+                  onDrop={(e) => { e.preventDefault(); setBulkDragOver(false); addBulkFiles(Array.from(e.dataTransfer.files)); }}
+                  onClick={() => bulkInputRef.current?.click()}
+                >
+                  <input
+                    ref={bulkInputRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { if (e.target.files?.length) addBulkFiles(Array.from(e.target.files)); e.target.value = ''; }}
+                  />
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <FolderUp size={22} className="text-primary" />
+                    </div>
+                    <p className="font-600 text-foreground text-sm">Drop multiple files here</p>
+                    <p className="text-xs text-muted-foreground">PDF, JPG, PNG, WebP · up to 10 files · 50 MB each</p>
+                    <p className="text-xs text-muted-foreground/70">Past papers, textbook pages, notes — AI will analyze all</p>
+                  </div>
+                </div>
+
+                {/* File list */}
+                {bulkFiles.length > 0 && (
+                  <div className="space-y-1.5">
+                    {bulkFiles.map((bf, idx) => (
+                      <div key={bf.id} className="flex items-center gap-3 px-4 py-2.5 bg-muted/40 rounded-xl">
+                        <FileText size={14} className="text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-600 text-foreground truncate">{bf.file.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{(bf.file.size / 1024 / 1024).toFixed(1)} MB</p>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0">#{idx + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => setBulkFiles((prev) => prev.filter((b) => b.id !== bf.id))}
+                          className="text-muted-foreground hover:text-negative transition-colors"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground text-center pt-1">
+                      {bulkFiles.length} file{bulkFiles.length > 1 ? 's' : ''} · AI will analyze all and generate a combined question paper
+                    </p>
+                  </div>
+                )}
+
+                {step === 'error' && (
+                  <div className="flex items-start gap-2 p-4 bg-negative-bg rounded-lg text-sm text-red-700">
+                    <AlertTriangle size={16} className="shrink-0 mt-0.5" /><span>{errorMsg}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleBulkAnalyze}
+                  disabled={bulkFiles.length === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground font-600 py-3 rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Brain size={18} />
+                  {bulkFiles.length === 0
+                    ? 'Add files to analyze'
+                    : `Analyze ${bulkFiles.length} File${bulkFiles.length > 1 ? 's' : ''} with AI`}
+                </button>
+              </div>
             )}
 
             {/* Camera mode */}
