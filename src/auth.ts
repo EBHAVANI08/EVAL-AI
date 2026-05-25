@@ -24,9 +24,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         // Dummy logins for testing
         const dummyUsers = [
-          { email: 'admin@grade.ai',   password: 'admin123',   name: 'Super Admin', role: 'admin' },
-          { email: 'teacher@grade.ai', password: 'teacher123', name: 'Bhavani',     role: 'teacher' },
-          { email: 'student@grade.ai', password: 'student123', name: 'Aman Deep',   role: 'student', rollNo: 'S101' },
+          { email: 'admin@grade.ai',        password: 'admin123',     name: 'Super Admin', role: 'admin' },
+          { email: 'teacher@grade.ai',       password: 'teacher123',   name: 'Bhavani',     role: 'teacher' },
+          { email: 'student@grade.ai',       password: 'student123',   name: 'Aman Deep',   role: 'student', rollNo: 'S101' },
+          { email: 'admin@kamglobalit.com',   password: 'Welcome@2026', name: 'Admin',       role: 'admin' },
+          { email: 'teacher@kamglobalit.com', password: 'Welcome@2026', name: 'Teacher',     role: 'teacher' },
+          { email: 'student@kamglobalit.com', password: 'Welcome@2026', name: 'Student',     role: 'student', rollNo: 'STU001' },
         ];
 
         const dummyMatch = dummyUsers.find(u => u.email === credentials.email && u.password === credentials.password);

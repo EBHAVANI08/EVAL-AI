@@ -19,6 +19,12 @@ const roles: { id: Role; label: string; icon: React.ElementType; color: string; 
   { id: 'admin',   label: 'Admin',   icon: ShieldCheck,  color: 'text-violet-600', bg: 'bg-violet-50 border-violet-200', ring: 'ring-violet-300' },
 ];
 
+const QUICK_LOGINS: { role: Role; label: string; email: string; password: string; color: string; bg: string; border: string }[] = [
+  { role: 'teacher', label: 'Teacher',  email: 'teacher@kamglobalit.com', password: 'Welcome@2026', color: 'text-indigo-700', bg: 'bg-indigo-50 hover:bg-indigo-100',  border: 'border-indigo-200' },
+  { role: 'student', label: 'Student',  email: 'student@kamglobalit.com', password: 'Welcome@2026', color: 'text-cyan-700',   bg: 'bg-cyan-50 hover:bg-cyan-100',      border: 'border-cyan-200' },
+  { role: 'admin',   label: 'Admin',    email: 'admin@kamglobalit.com',   password: 'Welcome@2026', color: 'text-violet-700', bg: 'bg-violet-50 hover:bg-violet-100',  border: 'border-violet-200' },
+];
+
 const callbackUrls: Record<Role, string> = {
   teacher: '/teacher-dashboard',
   student: '/student-dashboard',
@@ -45,6 +51,7 @@ export default function AuthPageClient() {
   const [showPw2, setShowPw2]   = useState(false);
   const [loading, setLoading]   = useState(false);
   const [gLoading, setGLoading] = useState(false);
+  const [qLoading, setQLoading] = useState<Role | null>(null);
 
   /* Login form */
   const loginForm = useForm<{ email: string; password: string }>();
@@ -77,6 +84,20 @@ export default function AuthPageClient() {
     } else {
       loginForm.setError('email', { message: 'Invalid email or password' });
       setLoading(false);
+    }
+  };
+
+  /* ── Quick login ────────────────────────────────────────────────────── */
+  const onQuickLogin = async (ql: typeof QUICK_LOGINS[number]) => {
+    setQLoading(ql.role);
+    setRole(ql.role);
+    const res = await signIn('credentials', { email: ql.email, password: ql.password, redirect: false });
+    if (res?.ok) {
+      toast.success(`Signed in as ${ql.label}`);
+      window.location.href = callbackUrls[ql.role];
+    } else {
+      toast.error('Quick login failed — check credentials');
+      setQLoading(null);
     }
   };
 
@@ -296,6 +317,41 @@ export default function AuthPageClient() {
                   {gLoading ? <Loader2 size={16} className="animate-spin" /> : <GoogleIcon />}
                   Continue with Google
                 </button>
+
+                {/* Quick login */}
+                <div className="relative flex items-center gap-3 pt-1">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Quick Login (Demo)</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {QUICK_LOGINS.map((ql) => {
+                    const Icon = roles.find((r) => r.id === ql.role)?.icon ?? BookOpen;
+                    const isLoading = qLoading === ql.role;
+                    return (
+                      <button
+                        key={ql.role}
+                        type="button"
+                        onClick={() => onQuickLogin(ql)}
+                        disabled={!!qLoading}
+                        className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border transition-all disabled:opacity-60 ${ql.bg} ${ql.border} ${ql.color}`}
+                      >
+                        {isLoading
+                          ? <Loader2 size={16} className="animate-spin" />
+                          : <Icon size={16} />}
+                        <span className="text-[11px] font-semibold">{ql.label}</span>
+                        <span className="text-[9px] opacity-60 leading-tight text-center">
+                          {ql.email.split('@')[0]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-[10px] text-muted-foreground text-center -mt-1">
+                  All demo accounts use password: <span className="font-mono font-semibold">Welcome@2026</span>
+                </p>
               </motion.form>
             )}
 
