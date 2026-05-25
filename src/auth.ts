@@ -24,22 +24,51 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         // Dummy logins for testing
         const dummyUsers = [
-          { email: 'admin@grade.ai',        password: 'admin123',     name: 'Super Admin', role: 'admin' },
-          { email: 'teacher@grade.ai',       password: 'teacher123',   name: 'Bhavani',     role: 'teacher' },
-          { email: 'student@grade.ai',       password: 'student123',   name: 'Aman Deep',   role: 'student', rollNo: 'S101' },
-          { email: 'admin@kamglobalit.com',   password: 'Welcome@2026', name: 'Admin',       role: 'admin' },
-          { email: 'teacher@kamglobalit.com', password: 'Welcome@2026', name: 'Teacher',     role: 'teacher' },
-          { email: 'student@kamglobalit.com', password: 'Welcome@2026', name: 'Student',     role: 'student', rollNo: 'STU001' },
+          {
+            email: 'admin@grade.ai', password: 'admin123',
+            name: 'Super Admin', role: 'admin',
+          },
+          {
+            email: 'teacher@grade.ai', password: 'teacher123',
+            name: 'Bhavani', role: 'teacher',
+            school: 'Grade AI School',
+          },
+          {
+            email: 'student@grade.ai', password: 'student123',
+            name: 'Aman Deep', role: 'student',
+            rollNo: 'S101', studentClass: 'Class 10',
+            school: 'Grade AI School',
+          },
+          {
+            email: 'admin@kamglobalit.com', password: 'Welcome@2026',
+            name: 'KAM Admin', role: 'admin',
+            school: 'KAM Global IT',
+          },
+          {
+            email: 'teacher@kamglobalit.com', password: 'Welcome@2026',
+            name: 'KAM Teacher', role: 'teacher',
+            school: 'KAM Global IT',
+          },
+          {
+            email: 'student@kamglobalit.com', password: 'Welcome@2026',
+            name: 'KAM Student', role: 'student',
+            rollNo: 'KAM2026001', studentClass: 'Class 12',
+            school: 'KAM Global IT',
+          },
         ];
 
-        const dummyMatch = dummyUsers.find(u => u.email === credentials.email && u.password === credentials.password);
+        const dummyMatch = dummyUsers.find(
+          (u) => u.email === credentials.email && u.password === credentials.password,
+        );
         if (dummyMatch) {
           return {
-            id:     dummyMatch.email,
-            name:   dummyMatch.name,
-            email:  dummyMatch.email,
-            role:   dummyMatch.role,
-            rollNo: dummyMatch.rollNo ?? null,
+            id:           dummyMatch.email,
+            name:         dummyMatch.name,
+            email:        dummyMatch.email,
+            role:         dummyMatch.role,
+            rollNo:       (dummyMatch as any).rollNo       ?? null,
+            studentClass: (dummyMatch as any).studentClass ?? null,
+            school:       (dummyMatch as any).school       ?? null,
           };
         }
 
@@ -51,11 +80,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           });
           if (!user) return null;
           return {
-            id:     user._id.toString(),
-            name:   user.name,
-            email:  user.email,
-            role:   user.role,
-            rollNo: user.rollNo ?? null,
+            id:           user._id.toString(),
+            name:         user.name,
+            email:        user.email,
+            role:         user.role,
+            rollNo:       user.rollNo       ?? null,
+            studentClass: user.studentClass ?? null,
+            school:       user.school       ?? null,
           };
         } catch (err) {
           console.error('Credentials authorize error:', err);
@@ -81,7 +112,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 createdAt: new Date(),
               },
             },
-            { upsert: true }
+            { upsert: true },
           );
         } catch (err) {
           console.error('Google signIn DB save error:', err);
@@ -91,19 +122,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     async jwt({ token, user, account }) {
-      // Base: set role/rollNo from user on sign-in
       if (user) {
-        token.role   = (user as any).role   ?? null;
-        token.rollNo = (user as any).rollNo ?? null;
+        token.role         = (user as any).role         ?? null;
+        token.rollNo       = (user as any).rollNo       ?? null;
+        token.studentClass = (user as any).studentClass ?? null;
+        token.school       = (user as any).school       ?? null;
       }
-      // Google: fetch stored role from MongoDB (may have been updated by admin)
+      // Google: fetch stored role from MongoDB
       if (account?.provider === 'google' && token.email) {
         try {
           const db = await getDb();
           const dbUser = await db.collection('users').findOne({ email: token.email });
           if (dbUser) {
-            token.role   = dbUser.role;
-            token.rollNo = dbUser.rollNo ?? null;
+            token.role         = dbUser.role;
+            token.rollNo       = dbUser.rollNo       ?? null;
+            token.studentClass = dbUser.studentClass ?? null;
+            token.school       = dbUser.school       ?? null;
           }
         } catch { /* non-fatal */ }
       }
@@ -111,8 +145,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     async session({ session, token }) {
-      if (token.role)   (session.user as any).role   = token.role;
-      if (token.rollNo) (session.user as any).rollNo = token.rollNo;
+      const u = session.user as any;
+      if (token.role)         u.role         = token.role;
+      if (token.rollNo)       u.rollNo       = token.rollNo;
+      if (token.studentClass) u.studentClass = token.studentClass;
+      if (token.school)       u.school       = token.school;
       return session;
     },
   },
