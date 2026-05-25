@@ -342,7 +342,7 @@ export default function AuthPageClient() {
                           : <Icon size={16} />}
                         <span className="text-[11px] font-semibold">{ql.label}</span>
                         <span className="text-[9px] opacity-60 leading-tight text-center">
-                          {ql.email.split('@')[0]}
+                          {ql.email.charAt(0).toUpperCase() + ql.email.slice(1)}
                         </span>
                       </button>
                     );
