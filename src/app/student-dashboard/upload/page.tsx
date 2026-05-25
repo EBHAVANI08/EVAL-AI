@@ -24,7 +24,7 @@ type QueueFile = {
 
 type Submission = {
   id: string; subject: string; grade: string; fileName: string;
-  status: string; createdAt: string; studentName?: string; rollNo?: string;
+  pageCount?: number; status: string; createdAt: string; studentName?: string; rollNo?: string;
 };
 
 function fileIcon(file: File) {
@@ -88,7 +88,7 @@ export default function StudentUploadPage() {
   const updateStatus = (id: string, status: FileStatus, error?: string) =>
     setQueue((prev) => prev.map((q) => q.id === id ? { ...q, status, error } : q));
 
-  /* ── Submit all queued files ───────────────────────────── */
+  /* ── Submit all queued files as ONE submission ─────────── */
   const onSubmit = async () => {
     if (!subject || !grade) { toast.error('Please select subject and grade first.'); return; }
     if (queue.length === 0) { toast.error('Add at least one file before submitting.'); return; }
@@ -97,7 +97,10 @@ export default function StudentUploadPage() {
     if (!pending.length) { toast.error('All files are already submitted.'); return; }
 
     setSubmitting(true);
-    let successCount = 0;
+
+    // Step 1: Upload each file to Gemini storage
+    const collected: { base64Data: string; mimeType: string; fileName: string }[] = [];
+    const failedIds: string[] = [];
 
     for (const item of pending) {
       try {
@@ -105,36 +108,48 @@ export default function StudentUploadPage() {
         const fd = new FormData();
         fd.append('file', item.file);
         const uploadRes = await fetch('/api/ai/gemini-upload', { method: 'POST', body: fd });
-        if (!uploadRes.ok) throw new Error('File upload to storage failed');
+        if (!uploadRes.ok) throw new Error('Storage upload failed');
         const { base64Data, mimeType } = await uploadRes.json();
-
+        collected.push({ base64Data, mimeType, fileName: item.file.name });
         updateStatus(item.id, 'saving');
-        const saveRes = await fetch('/api/student-uploads', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subject, grade, base64Data, mimeType, fileName: item.file.name }),
-        });
-        if (!saveRes.ok) throw new Error('Failed to save submission');
-        const saved = await saveRes.json();
-
-        updateStatus(item.id, 'done');
-        setSubmissions((prev) => [saved, ...prev]);
-        successCount++;
       } catch (err: any) {
         updateStatus(item.id, 'error', err.message ?? 'Upload failed');
+        failedIds.push(item.id);
       }
     }
 
-    setSubmitting(false);
+    if (collected.length === 0) {
+      toast.error('All uploads failed — please try again.');
+      setSubmitting(false);
+      return;
+    }
 
-    if (successCount > 0) {
-      toast.success(`${successCount} file${successCount > 1 ? 's' : ''} submitted! Your teacher will evaluate them soon.`);
-      // Remove done files from queue after 3s
+    // Step 2: Save ONE combined submission with all pages
+    try {
+      const saveRes = await fetch('/api/student-uploads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, grade, files: collected }),
+      });
+      if (!saveRes.ok) throw new Error('Failed to save submission');
+      const saved = await saveRes.json();
+
+      // Mark all successfully uploaded files as done
+      setQueue((prev) => prev.map((q) =>
+        failedIds.includes(q.id) ? q : { ...q, status: 'done' }
+      ));
+      setSubmissions((prev) => [saved, ...prev]);
+      toast.success(
+        collected.length > 1
+          ? `${collected.length} pages submitted as one answer sheet! Your teacher will evaluate them soon.`
+          : 'Answer sheet submitted! Your teacher will evaluate it soon.'
+      );
       setTimeout(() => setQueue((prev) => prev.filter((q) => q.status !== 'done')), 3000);
+    } catch (err: any) {
+      toast.error(err.message ?? 'Failed to save submission — please try again.');
     }
-    if (successCount < pending.length) {
-      toast.error(`${pending.length - successCount} file(s) failed — check errors below and retry.`);
-    }
+
+    setSubmitting(false);
   };
 
   /* ── Delete submission ─────────────────────────────────── */
@@ -358,7 +373,12 @@ export default function StudentUploadPage() {
               <div className="px-6 py-4 grid grid-cols-6 gap-3 items-center border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                 <span className="text-sm font-semibold text-foreground">{s.subject}</span>
                 <span className="text-sm text-muted-foreground">{s.grade}</span>
-                <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={s.fileName}>{s.fileName}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs text-muted-foreground truncate max-w-[100px]" title={s.fileName}>{s.fileName}</span>
+                  {s.pageCount && s.pageCount > 1 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 shrink-0">{s.pageCount}p</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock size={11} />
                   {new Date(s.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
