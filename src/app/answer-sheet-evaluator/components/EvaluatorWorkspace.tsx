@@ -1439,6 +1439,7 @@ Output the JSON array now:`;
             paperTotalMarks={extractedPaper?.metadata.totalMarks}
             evalId={evalId}
             studentInfo={studentInfo}
+            scannedImages={scannedImages}
           />
         </div>
 

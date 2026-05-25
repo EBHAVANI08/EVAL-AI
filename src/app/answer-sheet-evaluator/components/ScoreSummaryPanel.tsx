@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Download, CheckCircle2, Save, AlertTriangle, BarChart2, Loader2 } from 'lucide-react';
+import { Download, CheckCircle2, Save, AlertTriangle, BarChart2, Loader2, FileDown } from 'lucide-react';
 import { toast } from 'sonner';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import type { QuestionEvaluation, StudentInfo } from './EvaluatorWorkspace';
 import dynamic from 'next/dynamic';
+import { downloadEvalReport } from '@/lib/generateEvalReport';
 
 const SubjectBreakdownChart = dynamic(
   () => import('./SubjectBreakdownChart'),
@@ -17,9 +18,10 @@ interface ScoreSummaryPanelProps {
   paperTotalMarks?: number;
   evalId: string | null;
   studentInfo: StudentInfo;
+  scannedImages?: string[];
 }
 
-export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, studentInfo }: ScoreSummaryPanelProps) {
+export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, studentInfo, scannedImages = [] }: ScoreSummaryPanelProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
 
@@ -113,6 +115,20 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
     toast.success('CSV report downloaded');
   };
 
+  const handleDownloadReport = () => {
+    const totalObtained = questions.reduce((s, q) => s + (q.teacherScore !== null ? q.teacherScore! : q.aiScore), 0);
+    const totalMax = questions.reduce((s, q) => s + q.maxMarks, 0);
+    const avgAiConfidence = questions.length > 0 ? Math.round(questions.reduce((s, q) => s + q.aiConfidence, 0) / questions.length) : 0;
+    downloadEvalReport({
+      studentInfo: { name: studentInfo.name, rollNo: studentInfo.rollNo, class: studentInfo.class, school: studentInfo.school, subject: studentInfo.subject },
+      paperInfo:   { totalMarks: paperTotalMarks ?? totalMax },
+      questions:   questions.map((q) => ({ qNo: q.qNo, questionText: q.questionText, aiScore: q.aiScore, teacherScore: q.teacherScore, maxMarks: q.maxMarks, aiReasoning: q.comment || undefined, section: q.section })),
+      trainingData: { totalObtained, totalMax, avgAiConfidence },
+      scannedImages,
+    }, scannedImages);
+    toast.success('Report opened — save as PDF using the print button.');
+  };
+
   return (
     <>
       <aside className="w-full lg:w-64 xl:w-72 lg:shrink-0 border-l border-border bg-card overflow-y-auto scrollbar-thin flex flex-col">
@@ -146,6 +162,14 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
               Export CSV
             </button>
           </div>
+
+          <button
+            onClick={handleDownloadReport}
+            className="btn-ghost w-full h-9 text-sm gap-1.5 border border-dashed border-orange-300 text-orange-600 hover:bg-orange-50"
+          >
+            <FileDown size={13} />
+            Download Full Report + Answer Sheet
+          </button>
 
           <p className="text-[11px] text-muted-foreground text-center">
             Finalizing locks all scores and generates the final report.
