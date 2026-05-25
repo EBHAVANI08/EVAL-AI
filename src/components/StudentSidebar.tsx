@@ -16,7 +16,7 @@ const navItems = [
   { label: 'My Results',   href: '/student-dashboard/results',     icon: ClipboardList },
   { label: 'Performance',  href: '/student-dashboard/performance', icon: BarChart3 },
   { label: 'Downloads',    href: '/student-dashboard/downloads',   icon: Download },
-  { label: 'Settings',     href: '/student-dashboard/settings',    icon: Settings },
+  { label: 'Profile',      href: '/student-dashboard/profile',     icon: Settings },
 ];
 
 export default function StudentSidebar() {

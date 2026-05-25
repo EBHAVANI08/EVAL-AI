@@ -60,15 +60,17 @@ export default function ProfileDropdown({ isOpen, onClose, user, profileHref = '
                 </button>
               </Link>
 
-              <button className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-bold text-[#64748B] hover:bg-[#F8FAFF] hover:text-[#0A0F1E] transition-all group">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center group-hover:bg-white group-hover:shadow-sm transition-all">
-                    <Settings size={18} />
+              <Link href={`${profileHref}#settings`} onClick={onClose} className="w-full">
+                <button className="w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-bold text-[#64748B] hover:bg-[#F8FAFF] hover:text-[#0A0F1E] transition-all group">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center group-hover:bg-white group-hover:shadow-sm transition-all">
+                      <Settings size={18} />
+                    </div>
+                    Account Settings
                   </div>
-                  Account Settings
-                </div>
-                <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-              </button>
+                  <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                </button>
+              </Link>
 
               <div className="pt-2 border-t border-[#F1F5F9]">
                 <button 
