@@ -1440,6 +1440,7 @@ Output the JSON array now:`;
             evalId={evalId}
             studentInfo={studentInfo}
             scannedImages={scannedImages}
+            behaviorAnalysis={behaviorAnalysis}
           />
         </div>
 

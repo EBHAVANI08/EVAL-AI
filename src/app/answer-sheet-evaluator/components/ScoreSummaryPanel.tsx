@@ -19,9 +19,10 @@ interface ScoreSummaryPanelProps {
   evalId: string | null;
   studentInfo: StudentInfo;
   scannedImages?: string[];
+  behaviorAnalysis?: any;
 }
 
-export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, studentInfo, scannedImages = [] }: ScoreSummaryPanelProps) {
+export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, studentInfo, scannedImages = [], behaviorAnalysis }: ScoreSummaryPanelProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [showFinalizeModal, setShowFinalizeModal] = useState(false);
 
@@ -120,11 +121,12 @@ export default function ScoreSummaryPanel({ questions, paperTotalMarks, evalId, 
     const totalMax = questions.reduce((s, q) => s + q.maxMarks, 0);
     const avgAiConfidence = questions.length > 0 ? Math.round(questions.reduce((s, q) => s + q.aiConfidence, 0) / questions.length) : 0;
     downloadEvalReport({
-      studentInfo: { name: studentInfo.name, rollNo: studentInfo.rollNo, class: studentInfo.class, school: studentInfo.school, subject: studentInfo.subject },
+      studentInfo: { name: studentInfo.name, rollNo: studentInfo.rollNo, class: studentInfo.class, school: studentInfo.school, subject: studentInfo.subject, board: studentInfo.board },
       paperInfo:   { totalMarks: paperTotalMarks ?? totalMax },
-      questions:   questions.map((q) => ({ qNo: q.qNo, questionText: q.questionText, aiScore: q.aiScore, teacherScore: q.teacherScore, maxMarks: q.maxMarks, aiReasoning: q.comment || undefined, section: q.section })),
+      questions:   questions.map((q) => ({ qNo: q.qNo, section: q.section, questionText: q.questionText, aiAnswer: q.aiAnswer, ocrText: q.ocrText, aiScore: q.aiScore, teacherScore: q.teacherScore, maxMarks: q.maxMarks, aiReasoning: q.comment || q.aiReasoning || undefined, aiConfidence: q.aiConfidence, keyPoints: q.keyPoints, hasDiagram: q.hasDiagram, language: q.language, status: q.status })),
       trainingData: { totalObtained, totalMax, avgAiConfidence },
       scannedImages,
+      behaviorAnalysis,
     }, scannedImages);
     toast.success('Report opened — save as PDF using the print button.');
   };
