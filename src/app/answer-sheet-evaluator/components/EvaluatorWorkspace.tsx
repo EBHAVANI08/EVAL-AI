@@ -460,6 +460,7 @@ export default function EvaluatorWorkspace() {
     const collectedImageBase64s: string[] = [];
     let collectedMimeType = 'image/jpeg'; // track actual mime type of collected images
     let pdfPageCount = 0; // count PDF pages so we can show placeholders
+    let collectedPdfBase64: string | null = null; // PDF base64 for behavior analysis
 
     try {
 
@@ -679,10 +680,13 @@ Output the JSON array now:`;
       if (directPayload) {
         // Student submission pre-loaded — evaluate directly without a File
         setLivePageLabel('Scanning…');
-        // Capture image for behavior analysis (images only, not PDFs)
+        // Capture image/PDF for behavior analysis
         if (directPayload.mimeType?.startsWith('image/') && directPayload.base64Data) {
           collectedImageBase64s.push(directPayload.base64Data);
           collectedMimeType = directPayload.mimeType;
+        } else if (directPayload.mimeType === 'application/pdf' && directPayload.base64Data) {
+          collectedPdfBase64 = directPayload.base64Data;
+          pdfPageCount++;
         }
         await evaluatePage(directPayload, prompt, (rawQ) => {
           allRawQuestions.push(rawQ);
@@ -698,11 +702,12 @@ Output the JSON array now:`;
 
           const visionPayload = await buildVisionPayload(filesToProcess[pageIdx]);
 
-          // Capture image base64 for thumbnail display (images only; PDFs counted separately)
+          // Capture image base64 for thumbnail display (images only; PDFs captured for behavior analysis)
           if (visionPayload.mimeType?.startsWith('image/') && visionPayload.base64Data) {
             collectedImageBase64s.push(visionPayload.base64Data);
             collectedMimeType = visionPayload.mimeType;
-          } else if (visionPayload.mimeType === 'application/pdf') {
+          } else if (visionPayload.mimeType === 'application/pdf' && visionPayload.base64Data) {
+            collectedPdfBase64 = visionPayload.base64Data;
             pdfPageCount++;
           }
 
@@ -872,17 +877,19 @@ Output the JSON array now:`;
             let emotionalSignals = null;
             let learningBehaviorInsights = null;
 
-            // Use all captured image base64s (from uploaded files or camera)
+            // Use image base64s (from files/camera) or fall back to PDF base64
             const imagesToAnalyze = collectedImageBase64s.length > 0
               ? collectedImageBase64s
-              : imagesToStore;
-            if (imagesToAnalyze.length > 0) {
+              : (collectedPdfBase64 ? [] : imagesToStore);
+            const hasPdfForBehavior = collectedImageBase64s.length === 0 && !!collectedPdfBase64;
+            const hasDataForBehavior = imagesToAnalyze.length > 0 || hasPdfForBehavior;
+            if (hasDataForBehavior) {
               const baRes = await fetch('/api/ai/behavior-analysis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  images: imagesToAnalyze.slice(0, 4),
-                  mimeType: collectedMimeType,
+                  images: hasPdfForBehavior ? [collectedPdfBase64] : imagesToAnalyze.slice(0, 4),
+                  mimeType: hasPdfForBehavior ? 'application/pdf' : collectedMimeType,
                   subject: studentInfo.subject,
                   gradeLevel: studentInfo.class,
                   evaluationSummary: {

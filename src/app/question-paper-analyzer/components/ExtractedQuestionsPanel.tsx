@@ -47,14 +47,18 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
   const [rows, setRows] = useState<SectionRow[]>(() =>
     rawSections.map((sec) => {
       const qs = paper.questions.filter((q) => q.section === sec);
+      // OR alternatives don't add to question count — they're choices for the same slot
+      const mainQs = qs.filter((q) => !q.isChoiceAlt);
       const cfgRow = sectionConfig.find((s) => s.name === sec);
       const constraint = paper.metadata.sectionConstraints?.[sec];
+      const aiLabel = paper.metadata.sectionLabels?.[sec] ?? '';
+      const aiMarksPerQ = paper.metadata.sectionMarksPerQ?.[sec] ?? mainQs[0]?.maxMarks ?? 1;
       return {
         sec,
-        label: cfgRow?.label ?? '',
-        marksPerQ: cfgRow?.marksPerQ ?? (qs[0]?.maxMarks ?? 1),
+        label: cfgRow?.label ?? aiLabel,
+        marksPerQ: cfgRow?.marksPerQ ?? aiMarksPerQ,
         attemptAny: constraint?.attemptAny ?? cfgRow?.attemptAny ?? 0,
-        detectedQCount: qs.length,
+        detectedQCount: mainQs.length,   // OR alternatives excluded — they share a slot
       };
     })
   );
@@ -66,9 +70,15 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
     return acc;
   }, {});
 
+  // Compute the actual exam total marks respecting "attempt any" constraints
+  const computeExamTotal = (currentRows: SectionRow[]) =>
+    currentRows.reduce((s, r) => s + (r.attemptAny > 0 ? r.attemptAny : r.detectedQCount) * r.marksPerQ, 0);
+
   // Update a single row field and propagate ALL changes to the questions array + metadata
   const updateRow = (sec: string, field: keyof SectionRow, val: string | number) => {
-    setRows((prev) => prev.map((r) => r.sec === sec ? { ...r, [field]: val } : r));
+    // Build projected rows (what rows will look like after this update)
+    const projectedRows = rows.map((r) => r.sec === sec ? { ...r, [field]: val } : r);
+    setRows(projectedRows);
 
     if (field === 'marksPerQ') {
       const newMarks = Number(val);
@@ -83,7 +93,8 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
         }
         return { ...q, maxMarks: newMarks };
       });
-      onUpdate({ ...paper, questions: updatedQuestions });
+      const newTotal = computeExamTotal(projectedRows);
+      onUpdate({ ...paper, questions: updatedQuestions, metadata: { ...paper.metadata, totalMarks: newTotal } });
     }
 
     if (field === 'attemptAny') {
@@ -95,29 +106,27 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
       } else {
         delete currentConstraints[sec];
       }
-      onUpdate({ ...paper, metadata: { ...paper.metadata, sectionConstraints: currentConstraints } });
+      const newTotal = computeExamTotal(projectedRows);
+      onUpdate({ ...paper, metadata: { ...paper.metadata, sectionConstraints: currentConstraints, totalMarks: newTotal } });
     }
 
     if (field === 'detectedQCount') {
-      // Recompute metadata totalMarks based on new counts across all rows
-      setRows((prev) => {
-        const newRows = prev.map((r) => r.sec === sec ? { ...r, detectedQCount: Number(val) } : r);
-        const newTotal = newRows.reduce((s, r) => s + r.detectedQCount * r.marksPerQ, 0);
-        onUpdate({ ...paper, metadata: { ...paper.metadata, totalMarks: newTotal } });
-        return newRows;
-      });
+      const newTotal = computeExamTotal(projectedRows);
+      onUpdate({ ...paper, metadata: { ...paper.metadata, totalMarks: newTotal } });
     }
   };
 
   // Remove an entire section
   const removeSection = (sec: string) => {
-    setRows((prev) => prev.filter((r) => r.sec !== sec));
+    const newRows = rows.filter((r) => r.sec !== sec);
+    setRows(newRows);
+    const newTotal = computeExamTotal(newRows);
     const updated: ExtractedPaper = {
       ...paper,
       metadata: {
         ...paper.metadata,
         sections: paper.metadata.sections.filter((s) => s !== sec),
-        totalMarks: paper.questions.filter((q) => q.section !== sec).reduce((s, q) => s + q.maxMarks, 0),
+        totalMarks: newTotal,
       },
       questions: paper.questions.filter((q) => q.section !== sec),
     };
@@ -144,8 +153,8 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
         <div className="flex-1">
           <p className="font-600 text-foreground text-sm">Question paper analyzed successfully</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-          {fileName} · {paper.questions.filter((q) => !q.parentQNo).length} questions extracted
-          {paper.questions.some((q) => q.parentQNo) && ` (${paper.questions.length} including sub-parts)`}
+          {fileName} · {paper.questions.filter((q) => !q.isChoiceAlt).length} questions extracted
+          {paper.questions.some((q) => q.isChoiceAlt) && ` · ${paper.questions.filter((q) => q.isChoiceAlt).length} OR choices`}
         </p>
         </div>
         <Link href="/answer-sheet-evaluator" onClick={onProceed}
@@ -160,7 +169,7 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
         {[
           { icon: BookOpen, label: 'Subject',     value: paper.metadata.subject },
           { icon: Hash,     label: 'Class',       value: paper.metadata.class },
-          { icon: Award,    label: 'Total Marks', value: String(rows.reduce((s, r) => s + r.detectedQCount * r.marksPerQ, 0)) },
+          { icon: Award,    label: 'Total Marks', value: String(rows.reduce((s, r) => s + (r.attemptAny > 0 ? r.attemptAny : r.detectedQCount) * r.marksPerQ, 0)) },
           { icon: Clock,    label: 'Duration',    value: paper.metadata.duration },
         ].map((item) => (
           <div key={item.label} className="bg-card border border-border rounded-xl p-4">
@@ -190,8 +199,16 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
         </div>
 
         {/* Column headers */}
-        <div className="grid grid-cols-[52px_1fr_110px_100px_80px_110px_40px] gap-2 px-5 py-2.5 bg-muted/50 border-b border-border">
-          {['SEC', 'LABEL / DESCRIPTION', 'QUESTIONS', 'MARKS / Q', 'TOTAL', 'ATTEMPT ANY', ''].map((h) => (
+        <div className="grid grid-cols-[44px_1fr_88px_84px_200px_80px_32px] gap-2 px-5 py-2.5 bg-muted/50 border-b border-border">
+          {[
+            'SEC',
+            'LABEL / DESCRIPTION',
+            'AVAILABLE',
+            'MARKS / Q',
+            'ATTEMPT RULE',
+            'SECTION TOTAL',
+            '',
+          ].map((h) => (
             <span key={h} className="text-[10px] font-700 text-muted-foreground uppercase tracking-wider">{h}</span>
           ))}
         </div>
@@ -199,12 +216,14 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
         {/* Section rows */}
         <div className="divide-y divide-border">
           {rows.map((row) => {
-            const qs = questionsBySection[row.sec] || [];
-            const total = row.detectedQCount * row.marksPerQ;
+            const attemptCount = row.attemptAny > 0 ? row.attemptAny : row.detectedQCount;
+            const sectionTotal = attemptCount * row.marksPerQ;
+            const isConstrained = row.attemptAny > 0;
             return (
-              <div key={row.sec} className="grid grid-cols-[52px_1fr_110px_100px_80px_110px_40px] gap-2 items-center px-5 py-3 hover:bg-muted/10 transition-colors">
+              <div key={row.sec} className="grid grid-cols-[44px_1fr_88px_84px_200px_80px_32px] gap-2 items-center px-5 py-3 hover:bg-muted/10 transition-colors">
+
                 {/* SEC badge */}
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                   <span className="text-sm font-700 text-primary">{row.sec}</span>
                 </div>
 
@@ -216,50 +235,73 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
                   className="h-9 w-full text-sm text-foreground border border-border rounded-lg px-3 bg-background outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/50"
                 />
 
-                {/* Questions (AI-detected, editable for correction) */}
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number" min={1} max={200}
-                    value={row.detectedQCount ?? qs.length}
-                    onChange={(e) => updateRow(row.sec, 'detectedQCount', Math.max(1, parseInt(e.target.value) || 1))}
-                    className="h-9 flex-1 text-center text-sm font-600 text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                  <span className="text-xs text-muted-foreground shrink-0">qs</span>
+                {/* Available questions — editable */}
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="flex items-center gap-1 w-full">
+                    <input
+                      type="number" min={1} max={200}
+                      value={row.detectedQCount}
+                      onChange={(e) => updateRow(row.sec, 'detectedQCount', Math.max(1, parseInt(e.target.value) || 1))}
+                      className="h-8 flex-1 text-center text-sm font-600 text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    />
+                    <span className="text-[11px] text-muted-foreground shrink-0">qs</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">available</span>
                 </div>
 
                 {/* Marks / Q — editable */}
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number" min={0.5} max={50} step={0.5}
-                    value={row.marksPerQ}
-                    onChange={(e) => updateRow(row.sec, 'marksPerQ', Math.max(0.5, parseFloat(e.target.value) || 0.5))}
-                    className="h-9 flex-1 text-center text-sm font-600 text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                  <span className="text-xs text-muted-foreground shrink-0">m</span>
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="flex items-center gap-1 w-full">
+                    <input
+                      type="number" min={0.5} max={50} step={0.5}
+                      value={row.marksPerQ}
+                      onChange={(e) => updateRow(row.sec, 'marksPerQ', Math.max(0.5, parseFloat(e.target.value) || 0.5))}
+                      className="h-8 flex-1 text-center text-sm font-600 text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    />
+                    <span className="text-[11px] text-muted-foreground shrink-0">m</span>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">per question</span>
                 </div>
 
-                {/* Total (computed) */}
-                <div className="h-9 flex items-center justify-center rounded-lg bg-primary/5 border border-primary/15">
-                  <span className="text-sm font-700 text-primary">{total}</span>
+                {/* Attempt Rule — key redesigned column */}
+                <div className={`flex flex-col gap-1 px-3 py-2 rounded-xl border ${isConstrained ? 'bg-amber-50/60 border-amber-200' : 'bg-muted/30 border-border'}`}>
+                  {/* Instruction line */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[10px] font-700 px-1.5 py-0.5 rounded-full ${isConstrained ? 'bg-amber-100 text-amber-700' : 'bg-primary/10 text-primary'}`}>
+                      {isConstrained ? 'ATTEMPT ANY' : 'ATTEMPT ALL'}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number" min={0} max={row.detectedQCount || 999}
+                        value={row.attemptAny === 0 ? '' : row.attemptAny}
+                        placeholder={String(row.detectedQCount)}
+                        onChange={(e) => updateRow(row.sec, 'attemptAny', e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0))}
+                        className={`h-6 w-10 text-center text-xs font-700 border rounded-md bg-white outline-none focus:ring-1 ${isConstrained ? 'border-amber-300 text-amber-800 focus:ring-amber-300' : 'border-border text-foreground focus:ring-primary/40'}`}
+                      />
+                      <span className="text-[11px] text-muted-foreground">of {row.detectedQCount} qs</span>
+                    </div>
+                  </div>
+                  {/* Formula */}
+                  <p className={`text-[10px] font-600 ${isConstrained ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                    → {attemptCount} × {row.marksPerQ}m = <span className="font-700">{sectionTotal}m</span>
+                    {isConstrained && <span className="font-400 text-amber-500 ml-1">(out of {row.detectedQCount * row.marksPerQ}m)</span>}
+                  </p>
                 </div>
 
-                {/* Attempt Any */}
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number" min={0} max={qs.length || 999}
-                    value={row.attemptAny === 0 ? '' : row.attemptAny}
-                    placeholder="All"
-                    onChange={(e) => updateRow(row.sec, 'attemptAny', e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value) || 0))}
-                    className="h-9 flex-1 text-center text-sm font-600 text-foreground border border-border rounded-lg bg-background outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/50"
-                  />
+                {/* Section Total */}
+                <div className={`flex flex-col items-center justify-center py-2 rounded-xl border ${isConstrained ? 'bg-amber-50 border-amber-200' : 'bg-primary/5 border-primary/15'}`}>
+                  <span className={`text-base font-700 ${isConstrained ? 'text-amber-700' : 'text-primary'}`}>{sectionTotal}m</span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">
+                    {isConstrained ? `${row.attemptAny} of ${row.detectedQCount} qs` : `all ${row.detectedQCount} qs`}
+                  </span>
                 </div>
 
                 {/* Delete */}
                 <button onClick={() => removeSection(row.sec)}
                   disabled={rows.length <= 1}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30"
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={13} />
                 </button>
               </div>
             );
@@ -267,23 +309,45 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
         </div>
 
         {/* Totals row */}
-        <div className="grid grid-cols-[52px_1fr_110px_100px_80px_110px_40px] gap-2 items-center px-5 py-3 bg-muted/30 border-t border-border">
-          <span />
-          <span className="text-xs font-700 text-muted-foreground uppercase tracking-wider">Total</span>
-          <span className="text-center text-sm font-700 text-foreground pl-1">
-            {rows.reduce((s, r) => s + r.detectedQCount, 0)} qs
-          </span>
-          <span />
-          <span className="text-center text-sm font-700 text-primary">
-            {rows.reduce((s, r) => s + r.detectedQCount * r.marksPerQ, 0)} m
-          </span>
-          <span /><span />
-        </div>
+        {(() => {
+          const totalQs       = rows.reduce((s, r) => s + r.detectedQCount, 0);
+          const attemptedQs   = rows.reduce((s, r) => s + (r.attemptAny > 0 ? r.attemptAny : r.detectedQCount), 0);
+          const examMarks     = rows.reduce((s, r) => s + (r.attemptAny > 0 ? r.attemptAny : r.detectedQCount) * r.marksPerQ, 0);
+          const allMarks      = rows.reduce((s, r) => s + r.detectedQCount * r.marksPerQ, 0);
+          const hasConstraints = rows.some((r) => r.attemptAny > 0);
+          return (
+            <div className="grid grid-cols-[44px_1fr_88px_84px_200px_80px_32px] gap-2 items-center px-5 py-3 bg-muted/30 border-t border-border">
+              <span />
+              <span className="text-xs font-700 text-muted-foreground uppercase tracking-wider">Paper Total</span>
+              {/* Available total */}
+              <div className="flex flex-col items-center">
+                <span className="text-sm font-700 text-foreground">{totalQs} qs</span>
+                <span className="text-[10px] text-muted-foreground">available</span>
+              </div>
+              <span />
+              {/* Attempt summary */}
+              <div className="flex flex-col gap-0.5 px-3">
+                <span className="text-xs font-700 text-foreground">
+                  {hasConstraints ? `${attemptedQs} of ${totalQs} qs to attempt` : `All ${totalQs} qs required`}
+                </span>
+                {hasConstraints && allMarks !== examMarks && (
+                  <span className="text-[10px] text-muted-foreground">→ {examMarks}m out of {allMarks}m total</span>
+                )}
+              </div>
+              {/* Exam total marks */}
+              <div className="flex flex-col items-center">
+                <span className="text-base font-700 text-primary">{examMarks}m</span>
+                <span className="text-[10px] text-muted-foreground">exam total</span>
+              </div>
+              <span />
+            </div>
+          );
+        })()}
 
         {/* Hint */}
         <div className="flex items-start gap-2.5 px-5 py-3 bg-amber-50 border-t border-amber-100 text-xs text-amber-800">
           <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-          <p><strong>Verify:</strong> AI has pre-filled sections from your paper. Edit any value if it doesn&apos;t match. <strong>Attempt Any</strong> — leave blank if all questions are required.</p>
+          <p><strong>Verify:</strong> AI has pre-filled sections from your paper. Edit any value if it doesn&apos;t match. In <strong>Attempt Rule</strong>, type how many questions must be answered (leave blank = all required). Amber = constrained by &quot;attempt any&quot;; Blue = all required.</p>
         </div>
       </div>
 
@@ -303,11 +367,18 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
         {rows.map((row) => {
           const sec = row.sec;
           const qs = questionsBySection[sec] || [];
-          const totalSectionMarks = qs.reduce((sum, q) => sum + q.maxMarks, 0);
-          const effectiveMarks = row.attemptAny > 0
-            ? Math.round(row.attemptAny * (totalSectionMarks / Math.max(qs.length, 1)) * 100) / 100
-            : totalSectionMarks;
+          // Main questions only — OR alternatives don't add marks/count
+          const mainQs = qs.filter((q) => !q.isChoiceAlt);
+          const orCount = qs.filter((q) => q.isChoiceAlt).length;
+          const sectionMarks = (row.attemptAny > 0 ? row.attemptAny : mainQs.length) * row.marksPerQ;
           const isExpanded = expandedSection === sec || expandedSection === null;
+
+          // Group questions: each main question + its OR alternative (if any)
+          type QGroup = { main: ExtractedQuestion; orAlt: ExtractedQuestion | null };
+          const grouped: QGroup[] = mainQs.map((main) => ({
+            main,
+            orAlt: qs.find((alt) => alt.isChoiceAlt && alt.qNo === main.qNo + 'OR') ?? null,
+          }));
 
           return (
             <div key={sec} className="border-b border-border last:border-0">
@@ -315,11 +386,13 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
                 onClick={() => setExpandedSection(isExpanded && expandedSection === sec ? null : sec)}
                 className="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <span className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center text-xs font-700 text-primary">{sec}</span>
                   <span className="font-600 text-foreground text-sm">Section {sec}{row.label ? ` — ${row.label}` : ''}</span>
                   <span className="text-xs text-muted-foreground">
-                    {qs.length} questions · {effectiveMarks} marks
+                    {mainQs.length} questions
+                    {orCount > 0 && <span className="ml-1 text-amber-600 font-600">· {orCount} with OR choice</span>}
+                    {' · '}{sectionMarks}m
                     {row.attemptAny > 0 && <span className="ml-1.5 text-warning font-600">(Answer any {row.attemptAny})</span>}
                   </span>
                 </div>
@@ -331,20 +404,55 @@ export default function ExtractedQuestionsPanel({ paper, sectionConfig, fileName
 
               {(expandedSection === sec || expandedSection === null) && (
                 <div className="divide-y divide-border">
-                  {qs.map((q) => (
-                    <div key={q.qNo}
-                      className={`flex items-start gap-4 px-5 py-3 hover:bg-muted/10 transition-colors ${q.isChoiceAlt ? 'bg-amber-50/50 border-l-2 border-amber-300' : q.parentQNo ? 'pl-10 bg-muted/5' : ''}`}
-                    >
-                      <span className="text-xs font-700 text-foreground w-12 shrink-0 pt-0.5">
-                        {q.isChoiceAlt ? <span className="text-amber-600">OR</span> : `Q.${q.qNo}`}
-                      </span>
-                      <p className="flex-1 text-sm text-foreground leading-relaxed">{q.questionText}</p>
-                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                        {q.isChoiceAlt && <span className="text-[10px] font-700 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">CHOICE</span>}
-                        {q.parentQNo && !q.isChoiceAlt && <span className="text-[10px] font-600 px-1.5 py-0.5 rounded bg-muted text-muted-foreground">sub-part</span>}
-                        <span className={`text-xs font-600 px-2 py-0.5 rounded-full ${typeColors[q.type] || 'bg-muted text-muted-foreground'}`}>{q.type}</span>
-                        <span className="text-xs font-700 text-foreground bg-muted px-2 py-0.5 rounded-full">{q.maxMarks}m</span>
-                      </div>
+                  {grouped.map(({ main, orAlt }) => (
+                    <div key={main.qNo}>
+                      {/* If this question has an OR alternative, wrap both in a choice container */}
+                      {orAlt ? (
+                        <div className="mx-4 my-2 border border-amber-200 rounded-xl overflow-hidden">
+                          {/* Choice header */}
+                          <div className="px-4 py-1.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                            <span className="text-[10px] font-700 text-amber-700 uppercase tracking-wide">Student attempts ONE of the following</span>
+                            <span className="text-[10px] text-amber-500">({main.maxMarks}m — pick either option)</span>
+                          </div>
+                          {/* Main question (option A) */}
+                          <div className={`flex items-start gap-4 px-4 py-3 bg-white ${main.parentQNo ? 'pl-8' : ''}`}>
+                            <span className="text-xs font-700 text-foreground w-12 shrink-0 pt-0.5">Q.{main.qNo}</span>
+                            <p className="flex-1 text-sm text-foreground leading-relaxed">{main.questionText}</p>
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                              {main.parentQNo && <span className="text-[10px] font-600 px-1.5 py-0.5 rounded bg-muted text-muted-foreground">sub-part</span>}
+                              <span className={`text-xs font-600 px-2 py-0.5 rounded-full ${typeColors[main.type] || 'bg-muted text-muted-foreground'}`}>{main.type}</span>
+                              <span className="text-xs font-700 text-foreground bg-muted px-2 py-0.5 rounded-full">{main.maxMarks}m</span>
+                            </div>
+                          </div>
+                          {/* OR divider */}
+                          <div className="flex items-center gap-3 px-4 py-1 bg-amber-50 border-y border-amber-100">
+                            <span className="text-xs font-700 text-amber-700">OR</span>
+                            <div className="flex-1 border-t border-amber-200" />
+                            <span className="text-[10px] text-amber-500">choose this instead</span>
+                          </div>
+                          {/* OR alternative (option B) */}
+                          <div className="flex items-start gap-4 px-4 py-3 bg-amber-50/30">
+                            <span className="text-xs font-700 text-amber-600 w-12 shrink-0 pt-0.5">Q.{orAlt.qNo.replace('OR', '')}b</span>
+                            <p className="flex-1 text-sm text-foreground leading-relaxed">{orAlt.questionText}</p>
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                              <span className="text-[10px] font-700 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">OR CHOICE</span>
+                              <span className={`text-xs font-600 px-2 py-0.5 rounded-full ${typeColors[orAlt.type] || 'bg-muted text-muted-foreground'}`}>{orAlt.type}</span>
+                              <span className="text-xs font-700 text-foreground bg-muted px-2 py-0.5 rounded-full">{orAlt.maxMarks}m</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Regular question — no OR alternative */
+                        <div className={`flex items-start gap-4 px-5 py-3 hover:bg-muted/10 transition-colors ${main.parentQNo ? 'pl-10 bg-muted/5' : ''}`}>
+                          <span className="text-xs font-700 text-foreground w-12 shrink-0 pt-0.5">Q.{main.qNo}</span>
+                          <p className="flex-1 text-sm text-foreground leading-relaxed">{main.questionText}</p>
+                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                            {main.parentQNo && <span className="text-[10px] font-600 px-1.5 py-0.5 rounded bg-muted text-muted-foreground">sub-part</span>}
+                            <span className={`text-xs font-600 px-2 py-0.5 rounded-full ${typeColors[main.type] || 'bg-muted text-muted-foreground'}`}>{main.type}</span>
+                            <span className="text-xs font-700 text-foreground bg-muted px-2 py-0.5 rounded-full">{main.maxMarks}m</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

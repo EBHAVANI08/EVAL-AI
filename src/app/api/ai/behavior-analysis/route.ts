@@ -78,6 +78,8 @@ export async function POST(request: NextRequest) {
     const hint = gradeContextHint(gradeLevel ?? '');
 
     const prompt = `You are an educational psychologist and handwriting analyst reviewing a student's handwritten answer sheet.
+The input may be images (JPEG/PNG) OR a multi-page PDF — in either case, examine ALL pages thoroughly for handwritten content.
+For PDFs: scan every page from first to last; handwriting may appear across different pages.
 
 ⚠️ IMPORTANT FRAMING:
 All your outputs MUST be framed as "signals" or "indicators" — not clinical facts or personality diagnoses.
@@ -255,10 +257,13 @@ OUTPUT FORMAT — return ONLY valid JSON, no markdown fences:
   }
 }`;
 
-    // Build image parts (max 4 pages to keep token usage reasonable)
-    const imageParts = (images as string[]).slice(0, 4).map((b64: string) => ({
-      inline_data: { mime_type: mimeType ?? 'image/jpeg', data: b64 },
-    }));
+    // Build media parts — PDF = single part (whole doc); images = up to 4 pages
+    const isPdf = (mimeType ?? '').includes('pdf');
+    const imageParts = isPdf
+      ? [{ inline_data: { mime_type: 'application/pdf', data: (images as string[])[0] } }]
+      : (images as string[]).slice(0, 4).map((b64: string) => ({
+          inline_data: { mime_type: mimeType ?? 'image/jpeg', data: b64 },
+        }));
 
     const geminiBody = {
       contents: [{ parts: [{ text: prompt }, ...imageParts] }],
