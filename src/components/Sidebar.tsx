@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { id: 'nav-paper',     label: 'Paper Analyzer',     href: '/question-paper-analyzer',  icon: FileText,       group: 'tools' },
   { id: 'nav-generator', label: 'Answer Generator',   href: '/answer-generator',         icon: Lightbulb,      group: 'tools' },
   { id: 'nav-diagram',   label: 'Diagram Analyzer',   href: '/diagram-analyzer',         icon: ScanLine,       group: 'tools' },
+  { id: 'nav-q-generator', label: 'Paper Generator',    href: '/question-paper-generator', icon: Sparkles,     group: 'tools' },
   { id: 'nav-language',  label: 'Multilingual Engine',href: '/multilingual-engine',      icon: Languages,      group: 'tools' },
   { id: 'nav-students',  label: 'Students',           href: '/students',                 icon: Users,          group: 'manage' },
   { id: 'nav-papers',    label: 'Question Papers',    href: '/question-papers',          icon: BookOpen,       group: 'manage' },
